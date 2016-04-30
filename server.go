@@ -146,6 +146,12 @@ func (s *Server) dispatchRequest(addr *net.UDPAddr, b []byte) {
 		// Create request
 		w := &writeRequest{conn: conn, name: conn.rx.filename()}
 
+		// parse options to get size
+		conn.log.trace("performing write setup")
+		if err := conn.readSetup(true); err != nil {
+			conn.err = err
+		}
+
 		s.wh.ReceiveTFTP(w)
 	default:
 		s.log.debug("Unexpected Request")

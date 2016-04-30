@@ -239,6 +239,7 @@ func TestConn_getAck(t *testing.T) {
 		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
 		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
 		tConn := conn{
+			log:     newLogger("server"),
 			netConn: sNetConn,
 			addr:    cAddr,
 			timeout: c.timeout,

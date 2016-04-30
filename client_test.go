@@ -513,7 +513,7 @@ func TestClient_Put(t *testing.T) {
 			expectedData: random1MB,
 			expectedSize: 1048576,
 		},
-		"1MB-window5": {
+		"1MB-window2": {
 			url:  "tftp://#host#:#port#/file",
 			send: random1MB,
 			opts: []ClientOpt{ClientWindowsize(2)},

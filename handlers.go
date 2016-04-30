@@ -130,7 +130,7 @@ func (w *readRequest) WriteSize(i int64) {
 
 // FileServer creates a handler for sending and reciving files on the filesystem.
 func FileServer(dir string) ReadWriteHandler {
-	return &fileServer{path: dir}
+	return &fileServer{path: dir, log: newLogger("fileserver")}
 }
 
 type fileServer struct {

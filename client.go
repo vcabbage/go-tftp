@@ -78,7 +78,7 @@ func (c *Client) Get(url string) (*Response, error) {
 // Put takes an io.Reader request a server.
 //
 // URL is in the format tftp://[server]:[port]/[file]
-func (c *Client) Put(url string, r io.Reader, size int64) error {
+func (c *Client) Put(url string, r io.Reader, size int64) (err error) {
 	u, err := parseURL(url)
 	if err != nil {
 		return err
@@ -89,7 +89,12 @@ func (c *Client) Put(url string, r io.Reader, size int64) error {
 	if err != nil {
 		return err
 	}
-	defer errorDefer(conn.Close, c.log, "error closing upload network connection")
+	defer func() {
+		cErr := conn.Close()
+		if err == nil {
+			err = cErr
+		}
+	}()
 
 	// Set retransmit
 	conn.retransmit = c.retransmit

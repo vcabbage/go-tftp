@@ -425,7 +425,7 @@ func (c *conn) readSetup(server bool) error {
 		c.buf = make([]byte, needed)
 	}
 
-	if len(ackOpts) == 0 || server {
+	if len(ackOpts) == 0 || c.rx.opcode() != opCodeWRQ {
 		c.log.trace("Sending ACK to %s\n", c.addr)
 		c.tx.writeAck(0)
 	} else {
@@ -617,7 +617,7 @@ func (c *conn) readData() error {
 			break
 		}
 
-		c.log.debug("error recieving block %d: %v", c.block+1, err)
+		c.log.debug("error receiving block %d: %v", c.block+1, err)
 		if retries == c.retransmit {
 			c.log.debug("Max retransmit reached, ending transfer")
 			return wrapError(err, "reading data")

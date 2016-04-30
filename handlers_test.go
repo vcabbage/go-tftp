@@ -112,7 +112,7 @@ func (r *writeRequestMock) WriteError(c ErrorCode, m string) {
 	r.errMsg = m
 }
 
-func TestFileServer_RecieveTFTP(t *testing.T) {
+func TestFileServer_ReceiveTFTP(t *testing.T) {
 	text := getTestData(t, "text")
 
 	cases := map[string]struct {
