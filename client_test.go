@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -363,14 +364,14 @@ func TestClient_Get(t *testing.T) {
 		"cannot connect": {
 			url: "thishostdoesnotexist/file",
 
-			expectedError: "lookup thishostdoesnotexist: no such host",
+			expectedError: "lookup thishostdoesnotexist.*: no such host",
 		},
 		"server error": {
 			url:             "tftp://#host#:#port#/file",
 			response:        []byte("the data"),
 			sendServerError: true,
 
-			expectedError: "remote error: ERROR[Code: ACCESS_VIOLATION; Message: \"server error\"]",
+			expectedError: `remote error: ERROR\[Code: ACCESS_VIOLATION; Message: \"server error\"\]`,
 		},
 	}
 
@@ -397,10 +398,10 @@ func TestClient_Get(t *testing.T) {
 		url = strings.Replace(url, "#port#", strconv.Itoa(port), 1)
 
 		file, err := client.Get(url)
-		if err != nil && ErrorCause(err).Error() != c.expectedError {
-			t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
-		}
 		if err != nil {
+			if match, _ := regexp.MatchString(c.expectedError, ErrorCause(err).Error()); !match {
+				t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
+			}
 			continue
 		}
 
@@ -576,13 +577,13 @@ func TestClient_Put(t *testing.T) {
 		"cannot connect": {
 			url: "thishostdoesnotexist/file",
 
-			expectedError: "lookup thishostdoesnotexist: no such host",
+			expectedError: "lookup thishostdoesnotexist.*: no such host",
 		},
 		"server error": {
 			url:             "tftp://#host#:#port#/file",
 			sendServerError: true,
 
-			expectedError: "remote error: ERROR[Code: ACCESS_VIOLATION; Message: \"server error\"]",
+			expectedError: `remote error: ERROR\[Code: ACCESS_VIOLATION; Message: \"server error\"\]`,
 		},
 	}
 
@@ -624,10 +625,10 @@ func TestClient_Put(t *testing.T) {
 		err = client.Put(url, bytes.NewReader(c.send), int64(size))
 		mu.Lock()
 		mu.Unlock()
-		if err != nil && ErrorCause(err).Error() != c.expectedError {
-			t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
-		}
 		if err != nil {
+			if match, _ := regexp.MatchString(c.expectedError, ErrorCause(err).Error()); !match {
+				t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
+			}
 			continue
 		}
 
