@@ -17,7 +17,7 @@ import (
 const (
 	defaultPort       = 69
 	defaultMode       = ModeOctet
-	defaultUDPNet     = "udp4"
+	defaultUDPNet     = "udp"
 	defaultTimeout    = time.Second
 	defaultBlksize    = 512
 	defaultWindowsize = 1

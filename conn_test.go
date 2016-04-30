@@ -125,7 +125,7 @@ func TestConn_getAck(t *testing.T) {
 			timeout:  time.Millisecond,
 			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) {},
 
-			expectedError: "read udp4 .*: i/o timeout",
+			expectedError: "read udp .*: i/o timeout",
 		},
 		"wrong client": {
 			timeout: time.Millisecond * 10,
@@ -135,7 +135,7 @@ func TestConn_getAck(t *testing.T) {
 				dg := datagram{buf: make([]byte, 516)}
 
 				// Create and send a packet from a different port
-				otherConn, err := net.ListenUDP("udp4", nil)
+				otherConn, err := net.ListenUDP("udp", nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1630,20 +1630,20 @@ func ptrInt64(i int64) *int64 {
 }
 
 func testConns(t *testing.T) (tConn *conn, sAddr *net.UDPAddr, cNetConn *net.UDPConn, closer func()) {
-	cNetConn, err := net.ListenUDP("udp4", nil)
+	cNetConn, err := net.ListenUDP("udp", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cPort := cNetConn.LocalAddr().(*net.UDPAddr).Port
-	cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(cPort))
+	cAddr, _ := net.ResolveUDPAddr("udp", "localhost:"+strconv.Itoa(cPort))
 
-	tConn, err = newConn("udp4", ModeOctet, cAddr)
+	tConn, err = newConn("udp", ModeOctet, cAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	sPort := tConn.netConn.LocalAddr().(*net.UDPAddr).Port
-	sAddr, _ = net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(sPort))
+	sAddr, _ = net.ResolveUDPAddr("udp", "localhost:"+strconv.Itoa(sPort))
 
 	closer = func() {
 		cNetConn.Close()

@@ -21,7 +21,7 @@ func TestNewServer(t *testing.T) {
 		"default": {
 			addr: "",
 
-			expectedNet:        "udp4",
+			expectedNet:        "udp",
 			expectedRetransmit: 10,
 		},
 		"net udp6": {
@@ -47,7 +47,7 @@ func TestNewServer(t *testing.T) {
 				ServerRetransmit(2),
 			},
 
-			expectedNet:        "udp4",
+			expectedNet:        "udp",
 			expectedRetransmit: 2,
 		},
 		"retransmit, invalid": {
