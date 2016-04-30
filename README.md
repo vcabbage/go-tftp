@@ -5,7 +5,7 @@
 [![Build Status](https://travis-ci.org/vCabbage/trivialt.svg?branch=master)](https://travis-ci.org/vCabbage/trivialt)
 [![Build status](https://ci.appveyor.com/api/projects/status/0sxw1t6jjoe4yc9p?svg=true)](https://ci.appveyor.com/project/vCabbage/trivialt)
 [![GoDoc](https://godoc.org/github.com/vCabbage/trivialt?status.svg)](http://godoc.org/github.com/vCabbage/trivialt)
-
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/vcabbage/trivialt/master/LICENSE)
 
 
 trivialt is a cross-platform, concurrent TFTP server and client. It can be used as a standalone executable or included in a Go project as a library.
