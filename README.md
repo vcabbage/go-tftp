@@ -29,7 +29,7 @@ If you have the Go toolchain installed you can simply `go get` the packages. Thi
 go get -u github.com/vcabbage/trivialt/...
 ```
 
-Binary downloads coming soon.
+Pre-built binaries can be downloaded from the [release page](https://github.com/vCabbage/trivialt/releases).
 
 ## Command Usage
 
