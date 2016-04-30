@@ -57,7 +57,7 @@ func (db *tftpDB) ReceiveTFTP(w trivialt.WriteRequest) {
 	size, err := w.Size()
 
 	// We're choosing to only store logs that are less than 1MB.
-	// An error indicates no size was recieved.
+	// An error indicates no size was received.
 	if err != nil || size > 1024*1024 {
 		// Send a "disk full" error.
 		w.WriteError(trivialt.ErrCodeDiskFull, "File too large or no size sent")
