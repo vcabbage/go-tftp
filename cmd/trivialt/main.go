@@ -18,6 +18,11 @@ import (
 	"github.com/vcabbage/trivialt"
 )
 
+var (
+	// VERSION is replaced by linker for release builds.
+	VERSION = "dev"
+)
+
 func main() {
 	log.SetFlags(0)
 
@@ -63,6 +68,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "trivialt"
 	app.Usage = "tftp server/client"
+	app.Version = VERSION
 	app.Commands = []cli.Command{
 		{
 			Name:      "serve",

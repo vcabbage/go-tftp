@@ -1,0 +1,17 @@
+{
+	"Tasks": [
+		"default",
+		"publish-github"
+	],
+	"Arch": "386 amd64 arm",
+	"Os": "linux darwin windows freebsd openbsd solaris",
+	"MainDirsExclude": "examples",
+	"PackageVersion": "0.1.0",
+	"TaskSettings": {
+		"publish-github": {
+			"owner": "vcabbage",
+			"repository": "trivialt"
+		}
+	},
+	"ConfigVersion": "0.9"
+}
