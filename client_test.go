@@ -211,7 +211,7 @@ func TestClient_Get(t *testing.T) {
 
 	random1MB := getTestData(t, "1MB-random")
 	text := getTestData(t, "text")
-	// textNetascii := getTestData(t, "text-netascii")
+	textWindows := getTestData(t, "text-windows")
 	randomUnder1MB := random1MB[:len(random1MB)-3] // not divisible by 512
 
 	cases := map[string]struct {
@@ -220,6 +220,8 @@ func TestClient_Get(t *testing.T) {
 		opts            []ClientOpt
 		omitSize        bool
 		sendServerError bool
+		windowsOnly     bool
+		nixOnly         bool
 
 		expectedResponse []byte
 		expectedSize     int64
@@ -242,11 +244,21 @@ func TestClient_Get(t *testing.T) {
 		},
 		"small-netascii": {
 			url:      "tftp://#host#:#port#/file",
-			response: []byte("the\r\x00data"),
+			response: []byte("the\r\x00data with\r\nnewline"),
 			opts:     []ClientOpt{ClientMode(ModeNetASCII)},
+			nixOnly:  true,
 
-			expectedResponse: []byte("the\rdata"),
-			expectedSize:     9,
+			expectedResponse: []byte("the\rdata with\nnewline"),
+			expectedSize:     23, // Decoded size is larger than received
+		},
+		"small-netascii-windows": {
+			url:         "tftp://#host#:#port#/file",
+			response:    []byte("the\r\x00data with\r\nnewline"),
+			opts:        []ClientOpt{ClientMode(ModeNetASCII)},
+			windowsOnly: true,
+
+			expectedResponse: []byte("the\rdata with\r\nnewline"),
+			expectedSize:     23, // Decoded size is larger than received
 		},
 		"small data, don't send size": {
 			url:      "tftp://#host#:#port#/file",
@@ -267,8 +279,18 @@ func TestClient_Get(t *testing.T) {
 			url:      "tftp://#host#:#port#/file",
 			response: text,
 			opts:     []ClientOpt{ClientMode(ModeNetASCII)},
+			nixOnly:  true,
 
 			expectedResponse: text,
+			expectedSize:     810880, // TODO: Disable tsize for netascii?
+		},
+		"text-netascii-windows": {
+			url:         "tftp://#host#:#port#/file",
+			response:    text,
+			opts:        []ClientOpt{ClientMode(ModeNetASCII)},
+			windowsOnly: true,
+
+			expectedResponse: textWindows,
 			expectedSize:     810880, // TODO: Disable tsize for netascii?
 		},
 		"1MB": {
@@ -364,7 +386,7 @@ func TestClient_Get(t *testing.T) {
 		"cannot connect": {
 			url: "thishostdoesnotexist/file",
 
-			expectedError: "lookup thishostdoesnotexist.*: no such host",
+			expectedError: "[Nn]o such host",
 		},
 		"server error": {
 			url:             "tftp://#host#:#port#/file",
@@ -376,6 +398,11 @@ func TestClient_Get(t *testing.T) {
 	}
 
 	for label, c := range cases {
+		if (c.windowsOnly && runtime.GOOS != "windows") || (c.nixOnly && runtime.GOOS == "windows") {
+			t.Logf("skipping case %q marked windowsOnly:%t; nixOnly:%t; GOOS: %q", label, c.windowsOnly, c.nixOnly, runtime.GOOS)
+			continue
+		}
+
 		ip, port, close := newTestServer(t, func(w ReadRequest) {
 			if c.sendServerError {
 				w.WriteError(ErrCodeAccessViolation, "server error")
@@ -431,7 +458,7 @@ func TestClient_Put(t *testing.T) {
 
 	random1MB := getTestData(t, "1MB-random")
 	text := getTestData(t, "text")
-	// textNetascii := getTestData(t, "text-netascii")
+	textWindows := getTestData(t, "text-windows")
 	randomUnder1MB := random1MB[:len(random1MB)-3] // not divisible by 512
 
 	cases := map[string]struct {
@@ -440,6 +467,8 @@ func TestClient_Put(t *testing.T) {
 		opts            []ClientOpt
 		omitSize        bool
 		sendServerError bool
+		windowsOnly     bool
+		nixOnly         bool
 
 		expectedData  []byte
 		expectedSize  int64
@@ -461,12 +490,22 @@ func TestClient_Put(t *testing.T) {
 			expectedSize: 8,
 		},
 		"small-netascii": {
-			url:  "tftp://#host#:#port#/file",
-			send: []byte("the\r\x00data"),
-			opts: []ClientOpt{ClientMode(ModeNetASCII)},
+			url:     "tftp://#host#:#port#/file",
+			send:    []byte("the\r\x00data with\r\nnewline"),
+			opts:    []ClientOpt{ClientMode(ModeNetASCII)},
+			nixOnly: true,
 
-			expectedData: []byte("the\rdata"),
-			expectedSize: 9,
+			expectedData: []byte("the\rdata with\nnewline"),
+			expectedSize: 23, // Decoded size is larger than received
+		},
+		"small-netascii-windows": {
+			url:         "tftp://#host#:#port#/file",
+			send:        []byte("the\r\x00data with\r\nnewline"),
+			opts:        []ClientOpt{ClientMode(ModeNetASCII)},
+			windowsOnly: true,
+
+			expectedData: []byte("the\rdata with\r\nnewline"),
+			expectedSize: 23, // Decoded size is larger than received
 		},
 		"small data, don't send size": {
 			url:      "tftp://#host#:#port#/file",
@@ -484,11 +523,21 @@ func TestClient_Put(t *testing.T) {
 			expectedSize: 810880,
 		},
 		"text-netascii-nix": {
-			url:  "tftp://#host#:#port#/file",
-			send: text,
-			opts: []ClientOpt{ClientMode(ModeNetASCII)},
+			url:     "tftp://#host#:#port#/file",
+			send:    text,
+			opts:    []ClientOpt{ClientMode(ModeNetASCII)},
+			nixOnly: true,
 
 			expectedData: text,
+			expectedSize: 810880, // TODO: Disable tsize for netascii?
+		},
+		"text-netascii-windows": {
+			url:         "tftp://#host#:#port#/file",
+			send:        text,
+			opts:        []ClientOpt{ClientMode(ModeNetASCII)},
+			windowsOnly: true,
+
+			expectedData: textWindows,
 			expectedSize: 810880, // TODO: Disable tsize for netascii?
 		},
 		"1MB": {
@@ -577,7 +626,7 @@ func TestClient_Put(t *testing.T) {
 		"cannot connect": {
 			url: "thishostdoesnotexist/file",
 
-			expectedError: "lookup thishostdoesnotexist.*: no such host",
+			expectedError: "[Nn]o such host",
 		},
 		"server error": {
 			url:             "tftp://#host#:#port#/file",
@@ -588,6 +637,11 @@ func TestClient_Put(t *testing.T) {
 	}
 
 	for label, c := range cases {
+		if (c.windowsOnly && runtime.GOOS != "windows") || (c.nixOnly && runtime.GOOS == "windows") {
+			t.Logf("skipping case %q marked windowsOnly:%t; nixOnly:%t; GOOS: %q", label, c.windowsOnly, c.nixOnly, runtime.GOOS)
+			continue
+		}
+
 		var wr WriteRequest
 		var data []byte
 		var mu sync.Mutex

@@ -228,35 +228,22 @@ func TestConn_getAck(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		sNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn := conn{
-			log:        newLogger("server"),
-			netConn:    sNetConn,
-			remoteAddr: cAddr,
-			timeout:    c.timeout,
-			buf:        make([]byte, 516),
-			block:      c.block,
-			window:     c.window,
-			txBuf:      newRingBuffer(100, 100),
-		}
+		tConn, sAddr, cNetConn, closer := testConns(t)
+		defer closer()
+		tConn.timeout = c.timeout
+		tConn.block = c.block
+		tConn.window = c.window
+		tConn.buf = make([]byte, 516)
+		tConn.txBuf = newRingBuffer(100, 100)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
-			c.connFunc(label, cNetConn, sNetConn.LocalAddr().(*net.UDPAddr))
+			c.connFunc(label, cNetConn, sAddr)
 			wg.Done()
 		}()
 
-		err = tConn.getAck()
+		err := tConn.getAck()
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -406,26 +393,18 @@ func TestConn_sendWriteRequest(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn, err := newConn("udp4", ModeOctet, cAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tConn, sAddr, cNetConn, closer := testConns(t)
+		defer closer()
 		tConn.timeout = c.timeout
 
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
-			c.connFunc(label, cNetConn, tConn.netConn.LocalAddr().(*net.UDPAddr))
+			c.connFunc(label, cNetConn, sAddr)
 			wg.Done()
 		}()
 
-		err = tConn.sendWriteRequest("file", options{})
+		err := tConn.sendWriteRequest("file", options{})
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -612,27 +591,19 @@ func TestConn_sendReadRequest(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn, err := newConn("udp4", ModeOctet, cAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tConn, sAddr, cNetConn, closer := testConns(t)
+		defer closer()
 		tConn.timeout = c.timeout
 		tConn.mode = c.mode
 
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
-			c.connFunc(label, cNetConn, tConn.netConn.LocalAddr().(*net.UDPAddr))
+			c.connFunc(label, cNetConn, sAddr)
 			wg.Done()
 		}()
 
-		err = tConn.sendReadRequest("file", options{})
+		err := tConn.sendReadRequest("file", options{})
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -756,27 +727,19 @@ func TestConn_readData(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn, err := newConn("udp4", ModeOctet, cAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tConn, sAddr, cNetConn, closer := testConns(t)
+		defer closer()
 		tConn.timeout = c.timeout
 		tConn.window = c.window
 
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
-			c.connFunc(label, cNetConn, tConn.netConn.LocalAddr().(*net.UDPAddr))
+			c.connFunc(label, cNetConn, sAddr)
 			wg.Done()
 		}()
 
-		err = tConn.readData()
+		err := tConn.readData()
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -974,16 +937,8 @@ func TestConn_ackData(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn, err := newConn("udp4", ModeOctet, cAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tConn, sAddr, cNetConn, closer := testConns(t)
+		defer closer()
 		tConn.rx = c.rx
 		tConn.timeout = c.timeout
 		tConn.block = c.block
@@ -991,7 +946,7 @@ func TestConn_ackData(t *testing.T) {
 		tConn.windowsize = c.windowsize
 		tConn.catchup = c.catchup
 
-		err = tConn.ackData()
+		err := tConn.ackData()
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -1000,7 +955,7 @@ func TestConn_ackData(t *testing.T) {
 		}
 
 		if c.connFunc != nil {
-			c.connFunc(label, cNetConn, tConn.netConn.LocalAddr().(*net.UDPAddr))
+			c.connFunc(label, cNetConn, sAddr)
 		}
 
 		// Block number
@@ -1323,16 +1278,8 @@ func TestConn_write(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn, err := newConn("udp4", ModeOctet, cAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tConn, sAddr, cNetConn, closer := testConns(t)
+		defer closer()
 		if c.rx != nil {
 			tConn.rx = c.rx()
 		}
@@ -1349,7 +1296,7 @@ func TestConn_write(t *testing.T) {
 		if c.connFunc != nil {
 			wg.Add(1)
 			go func() {
-				c.connFunc(label, cNetConn, tConn.netConn.LocalAddr().(*net.UDPAddr))
+				c.connFunc(label, cNetConn, sAddr)
 				wg.Done()
 			}()
 		}
@@ -1460,16 +1407,8 @@ func TestConn_Close(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn, err := newConn("udp4", ModeOctet, cAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tConn, sAddr, cNetConn, closer := testConns(t)
+		defer closer()
 		tConn.blksize = c.blksize
 		tConn.timeout = c.timeout
 		tConn.buf = make([]byte, c.blksize)
@@ -1481,12 +1420,12 @@ func TestConn_Close(t *testing.T) {
 		if c.connFunc != nil {
 			wg.Add(1)
 			go func() {
-				c.connFunc(label, cNetConn, tConn.netConn.LocalAddr().(*net.UDPAddr))
+				c.connFunc(label, cNetConn, sAddr)
 				wg.Done()
 			}()
 		}
 
-		err = tConn.Close()
+		err := tConn.Close()
 		wg.Wait()
 
 		// Error
@@ -1590,16 +1529,8 @@ func TestConn_read(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn, err := newConn("udp4", ModeOctet, cAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tConn, sAddr, cNetConn, closer := testConns(t)
+		defer closer()
 		tConn.optionsParsed = c.optionsParsed
 		tConn.blksize = c.blksize
 		tConn.timeout = c.timeout
@@ -1611,7 +1542,7 @@ func TestConn_read(t *testing.T) {
 		if c.connFunc != nil {
 			wg.Add(1)
 			go func() {
-				c.connFunc(label, cNetConn, tConn.netConn.LocalAddr().(*net.UDPAddr))
+				c.connFunc(label, cNetConn, sAddr)
 				wg.Done()
 			}()
 		}
@@ -1666,16 +1597,8 @@ func TestConn_sendError(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		cNetConn, err := net.ListenUDP("udp4", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
-		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
-		tConn, err := newConn("udp4", ModeOctet, cAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tConn, _, cNetConn, closer := testConns(t)
+		defer closer()
 		tConn.blksize = c.blksize
 		tConn.timeout = c.timeout
 		tConn.buf = make([]byte, c.blksize+4)
@@ -1704,4 +1627,28 @@ func TestConn_sendError(t *testing.T) {
 
 func ptrInt64(i int64) *int64 {
 	return &i
+}
+
+func testConns(t *testing.T) (tConn *conn, sAddr *net.UDPAddr, cNetConn *net.UDPConn, closer func()) {
+	cNetConn, err := net.ListenUDP("udp4", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cPort := cNetConn.LocalAddr().(*net.UDPAddr).Port
+	cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(cPort))
+
+	tConn, err = newConn("udp4", ModeOctet, cAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sPort := tConn.netConn.LocalAddr().(*net.UDPAddr).Port
+	sAddr, _ = net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(sPort))
+
+	closer = func() {
+		cNetConn.Close()
+		tConn.netConn.Close()
+	}
+
+	return
 }

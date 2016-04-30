@@ -93,7 +93,7 @@ func (e *Writer) Write(p []byte) (int, error) {
 			}
 			e.last = cr
 			written++
-		} else if e.last == cr && current != nul {
+		} else if e.last == cr && current != lf && current != nul {
 			// CR becomes CRNUL
 			err = e.w.WriteByte(nul)
 			if err != nil {
