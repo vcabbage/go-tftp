@@ -174,19 +174,6 @@ func (s *Server) ListenAndServe() error {
 	return wrapError(s.Serve(conn), "serving tftp")
 }
 
-// ListenAndServe creates and starts a Server with default options.
-func ListenAndServe(addr string, rh ReadHandler, wh WriteHandler) error {
-	s, err := NewServer(addr)
-	if err != nil {
-		return wrapError(err, "creaing new server")
-	}
-
-	s.rh = rh
-	s.wh = wh
-
-	return wrapError(s.ListenAndServe(), "starting server")
-}
-
 // ServerOpt is a function that configures a Server.
 type ServerOpt func(*Server) error
 
