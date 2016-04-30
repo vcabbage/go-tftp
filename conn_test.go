@@ -59,8 +59,8 @@ func TestNewConn(t *testing.T) {
 		}
 
 		// Addr
-		if c.expectedAddr != conn.addr {
-			t.Errorf("%s: Expected addr %#v, but it was %#v", label, c.expectedAddr, conn.addr)
+		if c.expectedAddr != conn.remoteAddr {
+			t.Errorf("%s: Expected addr %#v, but it was %#v", label, c.expectedAddr, conn.remoteAddr)
 		}
 
 		// Mode
@@ -239,14 +239,14 @@ func TestConn_getAck(t *testing.T) {
 		port := cNetConn.LocalAddr().(*net.UDPAddr).Port
 		cAddr, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:"+strconv.Itoa(port))
 		tConn := conn{
-			log:     newLogger("server"),
-			netConn: sNetConn,
-			addr:    cAddr,
-			timeout: c.timeout,
-			buf:     make([]byte, 516),
-			block:   c.block,
-			window:  c.window,
-			txBuf:   newRingBuffer(100, 100),
+			log:        newLogger("server"),
+			netConn:    sNetConn,
+			remoteAddr: cAddr,
+			timeout:    c.timeout,
+			buf:        make([]byte, 516),
+			block:      c.block,
+			window:     c.window,
+			txBuf:      newRingBuffer(100, 100),
 		}
 
 		var wg sync.WaitGroup
@@ -1023,8 +1023,9 @@ func TestConn_parseOptions(t *testing.T) {
 	dg := datagram{}
 
 	cases := map[string]struct {
-		rx    func() datagram
-		tsize *int64
+		rx       func() datagram
+		tsize    *int64
+		isSender bool
 
 		expectOptionsParsed bool
 		expectedOptions     options
@@ -1081,7 +1082,8 @@ func TestConn_parseOptions(t *testing.T) {
 				dg.writeOptionAck(options{optTransferSize: "0"})
 				return dg
 			},
-			tsize: ptrInt64(1000),
+			tsize:    ptrInt64(1000),
+			isSender: true,
 
 			expectedOptions:     options{optTransferSize: "1000"},
 			expectedTsize:       ptrInt64(1000),
@@ -1136,7 +1138,8 @@ func TestConn_parseOptions(t *testing.T) {
 				})
 				return dg
 			},
-			tsize: ptrInt64(1234567890),
+			tsize:    ptrInt64(1234567890),
+			isSender: true,
 
 			expectedOptions: options{
 				optBlocksize:    "1024",
@@ -1177,6 +1180,7 @@ func TestConn_parseOptions(t *testing.T) {
 	for label, c := range cases {
 		tConn := conn{rx: c.rx()}
 		tConn.tsize = c.tsize
+		tConn.isSender = c.isSender
 
 		opts, err := tConn.parseOptions()
 

@@ -148,7 +148,7 @@ func (s *Server) dispatchRequest(addr *net.UDPAddr, b []byte) {
 
 		// parse options to get size
 		conn.log.trace("performing write setup")
-		if err := conn.readSetup(true); err != nil {
+		if err := conn.readSetup(); err != nil {
 			conn.err = err
 		}
 

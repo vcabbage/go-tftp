@@ -58,7 +58,7 @@ type writeRequest struct {
 }
 
 func (w *writeRequest) Addr() *net.UDPAddr {
-	return w.conn.addr.(*net.UDPAddr)
+	return w.conn.remoteAddr.(*net.UDPAddr)
 }
 
 func (w *writeRequest) Name() string {
@@ -109,7 +109,7 @@ type readRequest struct {
 }
 
 func (w *readRequest) Addr() *net.UDPAddr {
-	return w.conn.addr.(*net.UDPAddr)
+	return w.conn.remoteAddr.(*net.UDPAddr)
 }
 
 func (w *readRequest) Name() string {

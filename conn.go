@@ -42,7 +42,7 @@ func newConn(udpNet string, mode transferMode, addr *net.UDPAddr) (*conn, error)
 
 	c := &conn{
 		log:        newLogger(addr.String()),
-		addr:       addr,
+		remoteAddr: addr,
 		netConn:    netConn,
 		blksize:    defaultBlksize,
 		timeout:    defaultTimeout,
@@ -70,11 +70,13 @@ func newConnFromHost(udpNet string, mode transferMode, host string) (*conn, erro
 
 // conn handles TFTP read and write requests
 type conn struct {
-	log     *logger
-	netConn *net.UDPConn // Underlying network connection
-	addr    net.Addr     // Address of the remote server or client
+	log        *logger
+	netConn    *net.UDPConn // Underlying network connection
+	remoteAddr net.Addr     // Address of the remote server or client
 
-	optionsParsed bool // Whether TFTP options have been parsed yet
+	// Transfer type
+	isClient bool // Whether or not we're the client, gets set by sendRequest
+	isSender bool // Whether we're sending or receiving, gets set by writeSetup
 
 	// Negotiable options
 	blksize    uint16        // Size of DATA payloads
@@ -87,9 +89,10 @@ type conn struct {
 	retransmit int // Number of times an individual datagram will be retransmitted on error
 
 	// Track state of transfer
-	window  uint16 // Packets sent since last ACK
-	block   uint16 // Current block #
-	catchup bool   // Ignore incoming blocks from a window we reset
+	optionsParsed bool   // Whether TFTP options have been parsed yet
+	window        uint16 // Packets sent since last ACK
+	block         uint16 // Current block #
+	catchup       bool   // Ignore incoming blocks from a window we reset
 
 	// Buffers
 	buf   []byte       // incoming data from, sized to blksize + headers
@@ -112,89 +115,6 @@ type conn struct {
 	err error
 }
 
-func (c *conn) readFromNet(b []byte) (int, net.Addr, error) {
-	if err := c.netConn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
-		return 0, nil, wrapError(err, "setting network read deadline")
-	}
-	return c.netConn.ReadFrom(b)
-}
-
-// getAck reads ACK, validates structure and checks for ERROR
-//
-// If the received ACK is for a previous block, indicating the receiver missed data,
-// it will rollback the transfer to the ACK'd block and reset the window.
-func (c *conn) getAck() error {
-	for {
-		c.log.trace("Waiting for ACK from %s\n", c.addr)
-		numBytes, sAddr, err := c.readFromNet(c.buf)
-		if err != nil {
-			return wrapError(err, "network read failed")
-		}
-
-		// Send error to requests not from requesting client. May consider
-		// ignoring entirely.
-		// RFC1350:
-		// "If a source TID does not match, the packet should be
-		// discarded as erroneously sent from somewhere else.  An error packet
-		// should be sent to the source of the incorrect packet, while not
-		// disturbing the transfer."
-		if sAddr.String() != c.addr.String() {
-			c.log.err("Received unexpected datagram from %v, expected %v\n", sAddr, c.addr)
-			go func() {
-				var err datagram
-				err.writeError(ErrCodeUnknownTransferID, "Unexpected TID")
-				// Don't care about an error here, just a courtesy
-				_, _ = c.netConn.WriteTo(err.bytes(), sAddr)
-			}()
-
-			continue // Read another datagram
-		}
-
-		c.rx.setBytes(c.buf[:numBytes])
-		break
-	}
-
-	// Validate received datagram
-	if err := c.rx.validate(); err != nil {
-		return wrapError(err, "ACK validation failed")
-	}
-
-	// Check opcode
-	switch op := c.rx.opcode(); op {
-	case opCodeACK:
-		c.log.trace("Got ACK for block %d\n", c.rx.block())
-		// continue on
-	case opCodeERROR:
-		return wrapError(c.remoteError(), "error receiving ACK")
-	default:
-		return wrapError(&errUnexpectedDatagram{c.rx.String()}, "error receiving ACK")
-	}
-
-	// Check block #
-	if rxBlock := c.rx.block(); rxBlock != c.block {
-		c.log.debug("Expected ACK for block %d, got %d. Resetting to block %d.", c.block, rxBlock, rxBlock)
-		c.txBuf.UnreadSlots(int(c.block - rxBlock))
-		c.block = rxBlock
-		c.window = 0
-	}
-
-	return nil
-}
-
-func (c *conn) remoteError() error {
-	c.err = &errRemoteError{dg: c.rx.String()}
-	return c.err
-}
-
-// writeToNet writes tx to netConn
-func (c *conn) writeToNet() error {
-	if err := c.netConn.SetWriteDeadline(time.Now().Add(c.timeout * time.Duration(c.retransmit))); err != nil {
-		return wrapError(err, "setting network write deadline")
-	}
-	_, err := c.netConn.WriteTo(c.tx.bytes(), c.addr)
-	return err
-}
-
 // sendWriteRequest sends WRQ to server and negotiates transfer options
 func (c *conn) sendWriteRequest(filename string, opts map[string]string) error {
 	// Build WRQ
@@ -209,7 +129,7 @@ func (c *conn) sendWriteRequest(filename string, opts map[string]string) error {
 	switch op := c.rx.opcode(); op {
 	case opCodeOACK, opCodeACK:
 		// Got OACK, parse options
-		if err := c.writeSetup(true); err != nil {
+		if err := c.writeSetup(); err != nil {
 			return wrapError(err, "parsing OACK to WRQ")
 		}
 	case opCodeERROR:
@@ -220,37 +140,6 @@ func (c *conn) sendWriteRequest(filename string, opts map[string]string) error {
 	}
 
 	return nil
-}
-
-func (c *conn) sendRequest() error {
-	// Send request
-	if err := c.writeToNet(); err != nil {
-		return wrapError(err, "writing request to network")
-	}
-
-	// Receive response
-	for retries := 0; ; {
-		n, addr, err := c.readFromNet(c.buf)
-		if err == nil {
-			// Update address
-			c.addr = addr
-
-			// Set rx bytes
-			c.rx.setBytes(c.buf[:n])
-			break
-		}
-
-		if retries < c.retransmit {
-			c.log.debug("error getting %s response from %v", c.tx.opcode(), c.addr)
-			retries++
-			continue
-		}
-
-		return wrapError(err, "recieving request response")
-	}
-
-	// Extract and validate response
-	return wrapError(c.rx.validate(), "validating request response")
 }
 
 // sendReadRequest send RRQ to server and negotiates transfer options
@@ -270,7 +159,7 @@ func (c *conn) sendReadRequest(filename string, opts map[string]string) error {
 	switch op := c.rx.opcode(); op {
 	case opCodeOACK:
 		// Got OACK, parse options
-		if err := c.readSetup(true); err != nil {
+		if err := c.readSetup(); err != nil {
 			return wrapError(err, "got OACK, read setup")
 		}
 	case opCodeDATA:
@@ -312,12 +201,94 @@ func (c *conn) sendReadRequest(filename string, opts map[string]string) error {
 	return nil
 }
 
-// sendAck sends ACK
-func (c *conn) sendAck(block uint16) error {
-	c.tx.writeAck(block)
+func (c *conn) sendRequest() error {
+	// Set that we're a client
+	c.isClient = true
 
-	c.log.trace("Sending ACK for %d to %s\n", block, c.addr)
-	return wrapError(c.writeToNet(), "sending ACK")
+	// Send request
+	if err := c.writeToNet(); err != nil {
+		return wrapError(err, "writing request to network")
+	}
+
+	// Receive response
+	for retries := 0; ; {
+		n, addr, err := c.readFromNet(c.buf)
+		if err == nil {
+			// Update address
+			c.remoteAddr = addr
+
+			// Set rx bytes
+			c.rx.setBytes(c.buf[:n])
+			break
+		}
+
+		if retries < c.retransmit {
+			c.log.debug("error getting %s response from %v", c.tx.opcode(), c.remoteAddr)
+			retries++
+			continue
+		}
+
+		return wrapError(err, "recieving request response")
+	}
+
+	// Extract and validate response
+	return wrapError(c.rx.validate(), "validating request response")
+}
+
+// Write implements io.Writer and wraps write().
+//
+// If mode is ModeNetASCII, wrap write() with netascii.EncodeWriter.
+func (c *conn) Write(p []byte) (int, error) {
+	// Can't write if an error has been sent/received
+	if c.err != nil {
+		return 0, wrapError(c.err, "checking conn err before Write")
+	}
+
+	if c.mode == ModeNetASCII {
+		if c.netasciiEnc == nil {
+			c.netasciiEnc = netascii.NewWriter(writerFunc(c.write))
+		}
+		n, err := c.netasciiEnc.Write(p)
+		return n, wrapError(err, "writing through netascii encoder")
+	}
+
+	n, err := c.write(p)
+	return n, wrapError(err, "writing through standard writer")
+}
+
+// writeSetup parses options and sets up buffers before
+// first write.
+func (c *conn) writeSetup() error {
+	// Set that we're sending
+	c.isSender = true
+
+	ackOpts, err := c.parseOptions()
+	if err != nil {
+		return wrapError(err, "write setup")
+	}
+
+	// Set buf size
+	if len(c.buf) != int(c.blksize) {
+		c.buf = make([]byte, c.blksize)
+	}
+
+	// Init ringBuffer
+	c.txBuf = newRingBuffer(int(c.windowsize), int(c.blksize))
+
+	// Sending DATA ACKs when there are no options
+	// Client doesn't send OACK
+	if len(ackOpts) == 0 || c.isClient {
+		return nil
+	}
+
+	// Send OACK
+	c.log.trace("Sending OACK to %s\n", c.remoteAddr)
+	c.tx.writeOptionAck(ackOpts)
+	if err := c.writeToNet(); err != nil {
+		return wrapError(err, "sending OACK in response to options")
+	}
+
+	return wrapError(c.getAck(), "write setup")
 }
 
 // write writes adds data to txBuf and writes data to netConn in chunks of
@@ -326,7 +297,7 @@ func (c *conn) write(p []byte) (int, error) {
 	// Options won't be parsed before first write so that API consumer
 	// has opportunity to set tsize with ReadRequest.WriteSize()
 	if !c.optionsParsed {
-		if err := c.writeSetup(false); err != nil {
+		if err := c.writeSetup(); err != nil {
 			return 0, wrapError(err, "parsing options before write")
 		}
 	}
@@ -379,64 +350,6 @@ func (c *conn) write(p []byte) (int, error) {
 	return read, nil
 }
 
-// writeSetup parses options and sets up buffers before
-// first write.
-func (c *conn) writeSetup(server bool) error {
-	ackOpts, err := c.parseOptions()
-	if err != nil {
-		return wrapError(err, "write setup")
-	}
-
-	// Set buf size
-	if len(c.buf) != int(c.blksize) {
-		c.buf = make([]byte, c.blksize)
-	}
-
-	// Init ringBuffer
-	c.txBuf = newRingBuffer(int(c.windowsize), int(c.blksize))
-
-	// Sending DATA ACKs when there are no options
-	// Server doesn't ACK options
-	if len(ackOpts) == 0 || server {
-		return nil
-	}
-
-	// Send OACK
-	c.log.trace("Sending OACK to %s\n", c.addr)
-	c.tx.writeOptionAck(ackOpts)
-	if err := c.writeToNet(); err != nil {
-		return wrapError(err, "sending OACK in response to options")
-	}
-
-	return wrapError(c.getAck(), "write setup")
-}
-
-// readSetup parses options and sets up buffers before
-// first read.
-func (c *conn) readSetup(server bool) error {
-	ackOpts, err := c.parseOptions()
-	if err != nil {
-		return wrapError(err, "read setup")
-	}
-
-	// Set buf size
-	needed := int(c.blksize + 4)
-	if len(c.buf) != needed {
-		c.buf = make([]byte, needed)
-	}
-
-	if len(ackOpts) == 0 || c.rx.opcode() != opCodeWRQ {
-		c.log.trace("Sending ACK to %s\n", c.addr)
-		c.tx.writeAck(0)
-	} else {
-		c.log.trace("Sending OACK to %s\n", c.addr)
-		c.tx.writeOptionAck(ackOpts)
-	}
-
-	// Send ACK/OACK
-	return wrapError(c.writeToNet(), "sending ACK/OACK in response to options")
-}
-
 // writeData writes a single DATA datagram
 func (c *conn) writeData() error {
 	c.block++
@@ -449,88 +362,8 @@ func (c *conn) writeData() error {
 	c.tx.writeData(c.block, c.buf[:n])
 
 	// Send w.tx datagram
-	c.log.trace("Sending block %d with %d bytes to %s\n", c.block, n, c.addr)
+	c.log.trace("Sending block %d with %d bytes to %s\n", c.block, n, c.remoteAddr)
 	return wrapError(c.writeToNet(), "writing data to network")
-}
-
-// Write implements io.Writer and wraps write().
-//
-// If mode is ModeNetASCII, wrap write() with netascii.EncodeWriter.
-func (c *conn) Write(p []byte) (int, error) {
-	// Can't write if an error has been sent/received
-	if c.err != nil {
-		return 0, wrapError(c.err, "checking conn err before Write")
-	}
-
-	if c.mode == ModeNetASCII {
-		if c.netasciiEnc == nil {
-			c.netasciiEnc = netascii.NewWriter(writerFunc(c.write))
-		}
-		n, err := c.netasciiEnc.Write(p)
-		return n, wrapError(err, "writing through netascii encoder")
-	}
-
-	n, err := c.write(p)
-	return n, wrapError(err, "writing through standard writer")
-}
-
-// Close flushes any remaining data to be transferred and closes netConn
-func (c *conn) Close() (err error) {
-	c.log.debug("Closing connection to %s\n", c.addr)
-
-	defer func() {
-		// Close network even if another error occurs
-		//
-		cErr := c.netConn.Close()
-		if cErr != nil {
-			c.log.debug("error closing network connection:", cErr)
-		}
-		if err == nil {
-			err = cErr
-		}
-	}()
-
-	// Can't write if an error has been sent/received
-	if c.err != nil {
-		return wrapError(c.err, "checking conn err before Close")
-	}
-
-	// netasciiEnc needs to be flushed if it's in use
-	if c.netasciiEnc != nil {
-		if err := c.netasciiEnc.Flush(); err != nil {
-			return wrapError(err, "flushing netascii encoder before Close")
-		}
-	}
-
-	// Write any remaining data, or 0 length DATA to end transfer
-	if c.txBuf != nil {
-		for retries := 0; ; {
-			if err := c.writeData(); err != nil {
-				return wrapError(err, "writing final data before Close")
-			}
-
-			err := c.getAck()
-			if err == nil {
-				break
-			}
-
-			// Return if the transfer has erred
-			if c.err != nil {
-				return wrapError(c.err, "checking conn error sending ACK for final data before Close")
-			}
-
-			// Retry until maxRetransmit
-			retries++
-			c.log.debug("Error recieving ACK (retry %d): %v\n", retries, err)
-			if retries > c.retransmit {
-				c.log.debug("Max retries exceeded")
-				c.sendError(ErrCodeNotDefined, "max retries reached")
-				return wrapError(err, "writing final data ACK before Close")
-			}
-		}
-	}
-
-	return nil
 }
 
 // Read implements io.Reader and wraps read()
@@ -560,11 +393,39 @@ func (c *conn) Read(b []byte) (int, error) {
 	return n, err
 }
 
+// readSetup parses options and sets up buffers before
+// first read.
+func (c *conn) readSetup() error {
+	ackOpts, err := c.parseOptions()
+	if err != nil {
+		return wrapError(err, "read setup")
+	}
+
+	// Set buf size
+	needed := int(c.blksize + 4)
+	if len(c.buf) != needed {
+		c.buf = make([]byte, needed)
+	}
+
+	// If there we're not options negotiated, send ACK
+	// Client never sends OACK
+	if len(ackOpts) == 0 || c.isClient {
+		c.log.trace("Sending ACK to %s\n", c.remoteAddr)
+		c.tx.writeAck(0)
+	} else {
+		c.log.trace("Sending OACK to %s\n", c.remoteAddr)
+		c.tx.writeOptionAck(ackOpts)
+	}
+
+	// Send ACK/OACK
+	return wrapError(c.writeToNet(), "sending ACK/OACK in response to options")
+}
+
 // read reads data from netConn until p is full or the connection is
 // complete.
 func (c *conn) read(p []byte) (int, error) {
 	if !c.optionsParsed {
-		if err := c.readSetup(false); err != nil {
+		if err := c.readSetup(); err != nil {
 			return 0, wrapError(err, "parsing options before initial read")
 		}
 	}
@@ -610,7 +471,7 @@ func (c *conn) read(p []byte) (int, error) {
 // readDatagram reads a single datagram into rx
 func (c *conn) readData() error {
 	for retries := 0; ; {
-		c.log.trace("Waiting for DATA from %s\n", c.addr)
+		c.log.trace("Waiting for DATA from %s\n", c.remoteAddr)
 		n, _, err := c.readFromNet(c.buf)
 		if err == nil {
 			c.rx.setBytes(c.buf[:n])
@@ -693,6 +554,65 @@ func (c *conn) ackData() error {
 	return nil
 }
 
+// Close flushes any remaining data to be transferred and closes netConn
+func (c *conn) Close() (err error) {
+	c.log.debug("Closing connection to %s\n", c.remoteAddr)
+
+	defer func() {
+		// Close network even if another error occurs
+		//
+		cErr := c.netConn.Close()
+		if cErr != nil {
+			c.log.debug("error closing network connection:", cErr)
+		}
+		if err == nil {
+			err = cErr
+		}
+	}()
+
+	// Can't write if an error has been sent/received
+	if c.err != nil {
+		return wrapError(c.err, "checking conn err before Close")
+	}
+
+	// netasciiEnc needs to be flushed if it's in use
+	if c.netasciiEnc != nil {
+		if err := c.netasciiEnc.Flush(); err != nil {
+			return wrapError(err, "flushing netascii encoder before Close")
+		}
+	}
+
+	// Write any remaining data, or 0 length DATA to end transfer
+	if c.txBuf != nil {
+		for retries := 0; ; {
+			if err := c.writeData(); err != nil {
+				return wrapError(err, "writing final data before Close")
+			}
+
+			err := c.getAck()
+			if err == nil {
+				break
+			}
+
+			// Return if the transfer has erred
+			if c.err != nil {
+				return wrapError(c.err, "checking conn error sending ACK for final data before Close")
+			}
+
+			// Retry until maxRetransmit
+			retries++
+			c.log.debug("Error recieving ACK (retry %d): %v\n", retries, err)
+			if retries > c.retransmit {
+				c.log.debug("Max retries exceeded")
+				c.sendError(ErrCodeNotDefined, "max retries reached")
+				return wrapError(err, "writing final data ACK before Close")
+			}
+		}
+	}
+
+	return nil
+}
+
 // parseOACK parses the options from a datagram and returns the successfully
 // negotiated options.
 func (c *conn) parseOptions() (options, error) {
@@ -720,8 +640,8 @@ func (c *conn) parseOptions() (options, error) {
 			if err != nil {
 				return nil, &errParsingOption{option: opt, value: val}
 			}
-			if tsize == 0 && c.tsize != nil {
-				// We're the server, send tsize
+			if c.isSender && c.tsize != nil {
+				// We're sender, send tsize
 				ackOpts[opt] = strconv.FormatInt(*c.tsize, 10)
 				continue
 			}
@@ -743,7 +663,7 @@ func (c *conn) parseOptions() (options, error) {
 
 // sendError sends ERROR datagram to remote host
 func (c *conn) sendError(code ErrorCode, msg string) {
-	c.log.debug("Sending error code %s to %s: %s\n", code, c.addr, msg)
+	c.log.debug("Sending error code %s to %s: %s\n", code, c.remoteAddr, msg)
 
 	// Check error message length
 	if len(msg) > int((c.blksize - 1)) { // -1 for NULL terminator
@@ -759,6 +679,99 @@ func (c *conn) sendError(code ErrorCode, msg string) {
 
 	// Set error
 	c.err = &errRemoteError{dg: c.tx.String()}
+}
+
+// sendAck sends ACK
+func (c *conn) sendAck(block uint16) error {
+	c.tx.writeAck(block)
+
+	c.log.trace("Sending ACK for %d to %s\n", block, c.remoteAddr)
+	return wrapError(c.writeToNet(), "sending ACK")
+}
+
+// getAck reads ACK, validates structure and checks for ERROR
+//
+// If the received ACK is for a previous block, indicating the receiver missed data,
+// it will rollback the transfer to the ACK'd block and reset the window.
+func (c *conn) getAck() error {
+	for {
+		c.log.trace("Waiting for ACK from %s\n", c.remoteAddr)
+		numBytes, sAddr, err := c.readFromNet(c.buf)
+		if err != nil {
+			return wrapError(err, "network read failed")
+		}
+
+		// Send error to requests not from requesting client. May consider
+		// ignoring entirely.
+		// RFC1350:
+		// "If a source TID does not match, the packet should be
+		// discarded as erroneously sent from somewhere else.  An error packet
+		// should be sent to the source of the incorrect packet, while not
+		// disturbing the transfer."
+		if sAddr.String() != c.remoteAddr.String() {
+			c.log.err("Received unexpected datagram from %v, expected %v\n", sAddr, c.remoteAddr)
+			go func() {
+				var err datagram
+				err.writeError(ErrCodeUnknownTransferID, "Unexpected TID")
+				// Don't care about an error here, just a courtesy
+				_, _ = c.netConn.WriteTo(err.bytes(), sAddr)
+			}()
+
+			continue // Read another datagram
+		}
+
+		c.rx.setBytes(c.buf[:numBytes])
+		break
+	}
+
+	// Validate received datagram
+	if err := c.rx.validate(); err != nil {
+		return wrapError(err, "ACK validation failed")
+	}
+
+	// Check opcode
+	switch op := c.rx.opcode(); op {
+	case opCodeACK:
+		c.log.trace("Got ACK for block %d\n", c.rx.block())
+		// continue on
+	case opCodeERROR:
+		return wrapError(c.remoteError(), "error receiving ACK")
+	default:
+		return wrapError(&errUnexpectedDatagram{c.rx.String()}, "error receiving ACK")
+	}
+
+	// Check block #
+	if rxBlock := c.rx.block(); rxBlock != c.block {
+		c.log.debug("Expected ACK for block %d, got %d. Resetting to block %d.", c.block, rxBlock, rxBlock)
+		c.txBuf.UnreadSlots(int(c.block - rxBlock))
+		c.block = rxBlock
+		c.window = 0
+	}
+
+	return nil
+}
+
+// remoteError formats the error in rx, sets err and returns the error.
+func (c *conn) remoteError() error {
+	c.err = &errRemoteError{dg: c.rx.String()}
+	return c.err
+}
+
+// readFromNet reads from netConn into b.
+func (c *conn) readFromNet(b []byte) (int, net.Addr, error) {
+	if err := c.netConn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+		return 0, nil, wrapError(err, "setting network read deadline")
+	}
+	return c.netConn.ReadFrom(b)
+}
+
+// writeToNet writes tx to netConn.
+func (c *conn) writeToNet() error {
+	if err := c.netConn.SetWriteDeadline(time.Now().Add(c.timeout * time.Duration(c.retransmit))); err != nil {
+		return wrapError(err, "setting network write deadline")
+	}
+	_, err := c.netConn.WriteTo(c.tx.bytes(), c.remoteAddr)
+	return err
 }
 
 // ringBuffer wraps a bytes.Buffer, adding the ability to unread data
