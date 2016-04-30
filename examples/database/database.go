@@ -64,6 +64,10 @@ func (db *tftpDB) ReceiveTFTP(w trivialt.WriteRequest) {
 		return
 	}
 
+	// Note: The size value is sent by the client, the client could send more data than
+	// it indicated in the size option. To be safe we'd want to allocate a buffer
+	// with the size we're expecting and use w.Read(buf) rather than ioutil.ReadAll.
+
 	// Read the data from the client into memory
 	data, err := ioutil.ReadAll(w)
 	if err != nil {
