@@ -1,6 +1,12 @@
 # **trivialt**
 
 [![Go Report Card](https://goreportcard.com/badge/vcabbage/trivialt)](https://goreportcard.com/report/vcabbage/trivialt)
+[![Coverage Status](https://coveralls.io/repos/github/vCabbage/trivialt/badge.svg?branch=master)](https://coveralls.io/github/vCabbage/trivialt?branch=master)
+[![Build Status](https://travis-ci.org/vCabbage/trivialt.svg?branch=master)](https://travis-ci.org/vCabbage/trivialt)
+[![Build status](https://ci.appveyor.com/api/projects/status/0sxw1t6jjoe4yc9p?svg=true)](https://ci.appveyor.com/project/vCabbage/trivialt)
+[![GoDoc](https://godoc.org/github.com/vCabbage/trivialt?status.svg)](http://godoc.org/github.com/vCabbage/trivialt)
+
+
 
 trivialt is a cross-platform, concurrent TFTP server and client. It can be used as a standalone executable or included in a Go project as a library.
 
@@ -13,7 +19,7 @@ trivialt is a cross-platform, concurrent TFTP server and client. It can be used 
 - [X] Blocksize Option ([RFC 2348](https://tools.ietf.org/html/rfc2348))
 - [X] Timeout Interval Option ([RFC 2349](https://tools.ietf.org/html/rfc2349))
 - [X] Transfer Size Option ([RFC 2349](https://tools.ietf.org/html/rfc2349))
-- [X] Windowsize Options ([RFC 7440](https://tools.ietf.org/html/rfc7440))
+- [X] Windowsize Option ([RFC 7440](https://tools.ietf.org/html/rfc7440))
 
 ## Installation
 
@@ -245,7 +251,7 @@ server.ListenAndServe()
 }
 ```
 
-Full example in [examples/httpproxy/httpproxy.go](https://github.com/vCabbage/trivialt/blob/master/httpproxy/httpproxy.go).
+Full example in [examples/httpproxy/httpproxy.go](https://github.com/vCabbage/trivialt/blob/master/examples/httpproxy/httpproxy.go).
 
 #### Save Files to Database
 
@@ -283,4 +289,4 @@ func (db *tftpDB) ReceiveTFTP(w trivialt.WriteRequest) {
 2016/04/30 11:20:27 Inserted 32 bytes of data from 127.0.0.1. (ID=13)
 ```
 
-Full example including checking the size before accepting the request in [examples/database/database.go](https://github.com/vCabbage/trivialt/blob/master/database/database.go).
+Full example including checking the size before accepting the request in [examples/database/database.go](https://github.com/vCabbage/trivialt/blob/master/examples/database/database.go).
