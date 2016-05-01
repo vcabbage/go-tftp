@@ -3,7 +3,7 @@
 [![Go Report Card](https://goreportcard.com/badge/vcabbage/trivialt)](https://goreportcard.com/report/vcabbage/trivialt)
 [![Coverage Status](https://coveralls.io/repos/github/vCabbage/trivialt/badge.svg?branch=master)](https://coveralls.io/github/vCabbage/trivialt?branch=master)
 [![Build Status](https://travis-ci.org/vCabbage/trivialt.svg?branch=master)](https://travis-ci.org/vCabbage/trivialt)
-[![Build status](https://ci.appveyor.com/api/projects/status/0sxw1t6jjoe4yc9p?svg=true)](https://ci.appveyor.com/project/vCabbage/trivialt)
+[![Build status](https://ci.appveyor.com/api/projects/status/0sxw1t6jjoe4yc9p/branch/master?svg=true)](https://ci.appveyor.com/project/vCabbage/trivialt/branch/master)
 [![GoDoc](https://godoc.org/github.com/vCabbage/trivialt?status.svg)](http://godoc.org/github.com/vCabbage/trivialt)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/vcabbage/trivialt/master/LICENSE)
 
