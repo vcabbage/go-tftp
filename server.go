@@ -6,6 +6,8 @@ package trivialt
 
 import "net"
 
+import "sync"
+
 // Server contains the configuration to run a TFTP server.
 //
 // A ReadHandler, WriteHandler, or both can be registered to the server. If one
@@ -19,10 +21,39 @@ type Server struct {
 	conn    *net.UDPConn
 	close   bool
 
+	singlePort bool
+	mgr        *connManager
+
 	retransmit int // Per-packet retransmission limit
 
 	rh ReadHandler
 	wh WriteHandler
+}
+
+type connManager struct {
+	reqMap map[string]chan []byte
+	reqMu  sync.RWMutex
+}
+
+func (m *connManager) New(addr net.Addr) chan []byte {
+	m.reqMu.Lock()
+	defer m.reqMu.Unlock()
+	reqChan := make(chan []byte, 64) // TODO (better value)
+	m.reqMap[addr.String()] = reqChan
+	return reqChan
+}
+
+func (m *connManager) Get(addr net.Addr) (chan []byte, bool) {
+	m.reqMu.RLock()
+	defer m.reqMu.RUnlock()
+	reqChan, ok := m.reqMap[addr.String()]
+	return reqChan, ok
+}
+
+func (m *connManager) Remove(addr net.Addr) {
+	m.reqMu.Lock()
+	defer m.reqMu.Unlock()
+	delete(m.reqMap, addr.String())
 }
 
 // NewServer returns a configured Server.
@@ -75,7 +106,7 @@ func (s *Server) Serve(conn *net.UDPConn) error {
 
 	s.conn = conn
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, 65536) // Largest possible TFTP datagram
 	for {
 		numBytes, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {
@@ -84,9 +115,19 @@ func (s *Server) Serve(conn *net.UDPConn) error {
 			}
 			return wrapError(err, "reading from conn")
 		}
-		bufCopy := make([]byte, numBytes)
-		copy(bufCopy, buf)
-		go s.dispatchRequest(addr, bufCopy)
+
+		// Make a copy of the received data
+		b := make([]byte, numBytes)
+		copy(b, buf)
+
+		switch buf[1] {
+		case 1: //RRQ
+			go s.dispatchReadRequest(addr, b)
+		case 2: //WRQ
+			go s.dispatchWriteRequest(addr, b)
+		default:
+			go s.demuxToConn(addr, b)
+		}
 	}
 }
 
@@ -96,66 +137,121 @@ func (s *Server) Close() error {
 	return s.conn.Close()
 }
 
-// dispatchRequest parses incoming requests and executes the corresponding
-// handler, if one is registered. If a handler is not registered the server
-// sends an error to the client.
-func (s *Server) dispatchRequest(addr *net.UDPAddr, b []byte) {
-	conn, err := newConn(s.net, "", addr) // Use empty mode until request has been parsed.
-	if err != nil {
-		s.log.err("Received error opening connection for new request: %v", err)
+// dispatchReadRequest dispatches the read handler, if it is registered.
+// If a handler is not registered the server sends an error to the client.
+func (s *Server) dispatchReadRequest(addr *net.UDPAddr, buf []byte) {
+	// Check for handler
+	if s.rh == nil {
+		s.log.debug("No read handler registered.")
+		var err datagram
+		err.writeError(ErrCodeIllegalOperation, "Server does not support read requests.")
+		_, _ = s.conn.WriteTo(err.bytes(), addr) // Ignore error
 		return
 	}
-	defer errorDefer(conn.Close, s.log, "error closing network connection in dispath")
 
-	// Set retransmit
-	conn.retransmit = s.retransmit
+	c, closer, err := s.newConn(addr, buf)
+	if err != nil {
+		return
+	}
+	defer errorDefer(closer, s.log, "error closing network connection in dispath")
+
+	s.log.debug("New request from %v: %s", addr, c.rx)
+
+	// Create request
+	w := &readRequest{conn: c, name: c.rx.filename()}
+
+	// execute handler
+	s.rh.ServeTFTP(w)
+}
+
+// dispatchWriteRequest dispatches the read handler, if it is registered.
+// If a handler is not registered the server sends an error to the client.
+func (s *Server) dispatchWriteRequest(addr *net.UDPAddr, buf []byte) {
+	// Check for handler
+	if s.wh == nil {
+		s.log.debug("No write handler registered.")
+		var err datagram
+		err.writeError(ErrCodeIllegalOperation, "Server does not support write requests.")
+		_, _ = s.conn.WriteTo(err.bytes(), addr) // Ignore error
+		return
+	}
+
+	c, closer, err := s.newConn(addr, buf)
+	if err != nil {
+		return
+	}
+	defer errorDefer(closer, s.log, "error closing network connection in dispath")
+
+	s.log.debug("New request from %v: %s", addr, c.rx)
+
+	// Create request
+	w := &writeRequest{conn: c, name: c.rx.filename()}
+
+	// parse options to get size
+	c.log.trace("performing write setup")
+	if err := c.readSetup(); err != nil {
+		c.err = err
+	}
+
+	s.wh.ReceiveTFTP(w)
+}
+
+func (s *Server) demuxToConn(addr *net.UDPAddr, buf []byte) {
+	if s.singlePort {
+		if reqChan, ok := s.mgr.Get(addr); ok {
+			reqChan <- buf
+			return
+		}
+	}
+
+	// RFC1350:
+	// "If a source TID does not match, the packet should be
+	// discarded as erroneously sent from somewhere else.  An error packet
+	// should be sent to the source of the incorrect packet, while not
+	// disturbing the transfer."
+	dg := datagram{}
+	dg.writeError(ErrCodeUnknownTransferID, "Unexpected TID")
+	// Don't care about an error here, just a courtesy
+	_, _ = s.conn.WriteTo(dg.bytes(), addr)
+	s.log.debug("Unexpected datagram: %s", dg)
+}
+
+func (s *Server) newConn(addr *net.UDPAddr, buf []byte) (*conn, func() error, error) {
+	var c *conn
+	var err error
+	var dg datagram
+
+	dg.setBytes(buf)
 
 	// Validate request datagram
-	conn.rx.setBytes(b)
-	if err := conn.rx.validate(); err != nil {
+	if err := dg.validate(); err != nil {
 		s.log.debug("Error decoding new request: %v", err)
-		return
+		return nil, nil, err
 	}
-	s.log.debug("New request from %v: %s", addr, conn.rx)
 
-	// Set mode from request
-	conn.mode = conn.rx.mode()
-
-	switch conn.rx.opcode() {
-	case opCodeRRQ:
-		// Check for handler
-		if s.rh == nil {
-			s.log.debug("No read handler registered.")
-			conn.sendError(ErrCodeIllegalOperation, "Server does not support read requests.")
-			return
+	if s.singlePort {
+		c = newSinglePortConn(addr, dg.mode(), s.conn, s.mgr.New(addr))
+	} else {
+		c, err = newConn(s.net, dg.mode(), addr) // Use empty mode until request has been parsed.
+		if err != nil {
+			s.log.err("Received error opening connection for new request: %v", err)
+			return nil, nil, err
 		}
-
-		// Create request
-		w := &readRequest{conn: conn, name: conn.rx.filename()}
-
-		// execute handler
-		s.rh.ServeTFTP(w)
-	case opCodeWRQ:
-		// Check for handler
-		if s.wh == nil {
-			s.log.debug("No write handler registered.")
-			conn.sendError(ErrCodeIllegalOperation, "Server does not support write requests.")
-			return
-		}
-
-		// Create request
-		w := &writeRequest{conn: conn, name: conn.rx.filename()}
-
-		// parse options to get size
-		conn.log.trace("performing write setup")
-		if err := conn.readSetup(); err != nil {
-			conn.err = err
-		}
-
-		s.wh.ReceiveTFTP(w)
-	default:
-		s.log.debug("Unexpected Request")
 	}
+
+	c.rx = dg
+	// Set retransmit
+	c.retransmit = s.retransmit
+
+	closer := func() error {
+		err := c.Close()
+		if s.singlePort {
+			s.mgr.Remove(addr)
+		}
+		return err
+	}
+
+	return c, closer, nil
 }
 
 // ListenAndServe starts a configured server.
@@ -200,6 +296,22 @@ func ServerRetransmit(i int) ServerOpt {
 			return ErrInvalidRetransmit
 		}
 		s.retransmit = i
+		return nil
+	}
+}
+
+// ServerSinglePort enables the server to service all requests via a single port rather
+// than the standard TFTP behavior of each client communicating on a separate port.
+//
+// This is an experimental feature.
+//
+// Default is disabled.
+func ServerSinglePort(enable bool) ServerOpt {
+	return func(s *Server) error {
+		if enable {
+			s.singlePort = true
+			s.mgr = &connManager{reqMap: make(map[string]chan []byte)}
+		}
 		return nil
 	}
 }

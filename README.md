@@ -15,11 +15,29 @@ trivialt is a cross-platform, concurrent TFTP server and client. It can be used 
 
 - [X] Binary Transfer ([RFC 1350](https://tools.ietf.org/html/rfc1350))
 - [X] Netascii Transfer ([RFC 1350](https://tools.ietf.org/html/rfc1350))
-- [X] Option Extention ([RFC 2347](https://tools.ietf.org/html/rfc2347))
+- [X] Option Extension ([RFC 2347](https://tools.ietf.org/html/rfc2347))
 - [X] Blocksize Option ([RFC 2348](https://tools.ietf.org/html/rfc2348))
 - [X] Timeout Interval Option ([RFC 2349](https://tools.ietf.org/html/rfc2349))
 - [X] Transfer Size Option ([RFC 2349](https://tools.ietf.org/html/rfc2349))
 - [X] Windowsize Option ([RFC 7440](https://tools.ietf.org/html/rfc7440))
+
+### Unique Features
+
+- __Single Port Mode__
+
+    TL;DR: It allows TFTP to work through firewalls.
+
+    A standard TFTP server implementation receives requests on port 69 and allocates a new high port (over 1024) dedicated to that request.
+    In single port mode, trivialt receives and responds to requests on the same port. If trivialt is started on port 69, all communication will
+    be done on port 69.
+    
+    The primary use case of this feature is to play nicely with firewalls. Most firewalls will prevent the typical case where the server responds
+    back on a random port because they have no way of knowing that it is in response to a request that went out on port 69. In single port mode,
+    the firewall will see a request go out to a server on port 69 and that server respond back on the same port, which most firewalls will allow.
+    
+    Of course if the firewall in question is configured to block TFTP connections, this setting won't help you.
+    
+    Enable single port mode with the `--single-port` flag. This is currently marked experimental as is diverges from the TFTP standard.
 
 ## Installation
 
@@ -52,7 +70,8 @@ DESCRIPTION:
    the current directory.
 
 OPTIONS:
-   --writeable, -w	Enable file upload.
+   --writeable, -w	    Enable file upload.
+   --single-port, --sp	Enable single port mode. [Experimental]
 ```
 
 ```
@@ -127,10 +146,10 @@ trivialt's API was inspired by Go's well-known net/http API. If you can write a 
 
 ### Configuration Functions
 
-One area that is noticably different from net/http is the configuration of clients and servers. trivialt uses "configuration functions" rather than the direct modification of the
+One area that is noticeably different from net/http is the configuration of clients and servers. trivialt uses "configuration functions" rather than the direct modification of the
 Client/Server struct or a configuration struct passed into the factory functions.
 
-A few explainations of this pattern:
+A few explanations of this pattern:
 * [Self-referential functions and the design of options](http://commandcenter.blogspot.com/2014/01/self-referential-functions-and-design.html) by Rob Pike
 * [Functional options for friendly APIs](https://www.youtube.com/watch?v=24lFtGHWxAQ) by Dave Cheney [video]
 

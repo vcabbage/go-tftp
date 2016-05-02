@@ -80,6 +80,10 @@ func main() {
 					Name:  "writable, w",
 					Usage: "Enable file upload.",
 				},
+				cli.BoolFlag{
+					Name:  "single-port, sp",
+					Usage: "Enable single port mode. [Experimental]",
+				},
 			},
 			Description: `Serves files from the local file systemd.
    
@@ -119,6 +123,7 @@ func cmdServe(c *cli.Context) {
 	addr := c.Args().First()
 	path := c.Args().Get(1)
 	writable := c.Bool("writable")
+	singlePort := c.Bool("single-port")
 
 	if addr == "" {
 		addr = ":69"
@@ -132,7 +137,7 @@ func cmdServe(c *cli.Context) {
 	log.Printf("Starting TFTP Server on %q, serving %q\n", addr, root)
 	fs := &server{trivialt.FileServer(root)}
 
-	server, err := trivialt.NewServer(addr)
+	server, err := trivialt.NewServer(addr, trivialt.ServerSinglePort(singlePort))
 	if err != nil {
 		log.Fatalln(err)
 	}

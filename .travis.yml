@@ -1,5 +1,6 @@
 language: go
 sudo: false
+go_import_path: github.com/vcabbage/trivialt
 go:
  - 1.5.4
  - 1.6.2
@@ -12,7 +13,7 @@ before_install:
   - go get golang.org/x/tools/cmd/cover
   - go get github.com/modocache/gover
 script:
-  - go test -v -covermode=count -coverprofile=trivialt.coverprofile . 
-  - go test -v -covermode=count -coverprofile=netascii.coverprofile ./netascii 
+  - go test -v -covermode=count -coverprofile=trivialt.coverprofile .
+  - go test -v -covermode=count -coverprofile=netascii.coverprofile ./netascii
   - gover
   - goveralls -coverprofile=gover.coverprofile -service=travis-ci

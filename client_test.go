@@ -398,57 +398,61 @@ func TestClient_Get(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		if (c.windowsOnly && runtime.GOOS != "windows") || (c.nixOnly && runtime.GOOS == "windows") {
-			t.Logf("skipping case %q marked windowsOnly:%t; nixOnly:%t; GOOS: %q", label, c.windowsOnly, c.nixOnly, runtime.GOOS)
-			continue
-		}
+		for _, singlePort := range []bool{true, false} {
+			label := fmt.Sprintf("%s, single port mode: %t", label, singlePort)
 
-		ip, port, close := newTestServer(t, func(w ReadRequest) {
-			if c.sendServerError {
-				w.WriteError(ErrCodeAccessViolation, "server error")
-				return
+			if (c.windowsOnly && runtime.GOOS != "windows") || (c.nixOnly && runtime.GOOS == "windows") {
+				t.Logf("skipping case %q marked windowsOnly:%t; nixOnly:%t; GOOS: %q", label, c.windowsOnly, c.nixOnly, runtime.GOOS)
+				continue
 			}
 
-			if !c.omitSize {
-				w.WriteSize(int64(len(c.response)))
+			ip, port, close := newTestServer(t, singlePort, func(w ReadRequest) {
+				if c.sendServerError {
+					w.WriteError(ErrCodeAccessViolation, "server error")
+					return
+				}
+
+				if !c.omitSize {
+					w.WriteSize(int64(len(c.response)))
+				}
+				w.Write([]byte(c.response))
+			}, nil)
+			defer close()
+
+			client, err := NewClient(c.opts...)
+			if err != nil {
+				t.Fatal(err)
 			}
-			w.Write([]byte(c.response))
-		}, nil)
-		defer close()
 
-		client, err := NewClient(c.opts...)
-		if err != nil {
-			t.Fatal(err)
-		}
+			url := strings.Replace(c.url, "#host#", ip, 1)
+			url = strings.Replace(url, "#port#", strconv.Itoa(port), 1)
 
-		url := strings.Replace(c.url, "#host#", ip, 1)
-		url = strings.Replace(url, "#port#", strconv.Itoa(port), 1)
-
-		file, err := client.Get(url)
-		if err != nil {
-			if match, _ := regexp.MatchString(c.expectedError, ErrorCause(err).Error()); !match {
-				t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
+			file, err := client.Get(url)
+			if err != nil {
+				if match, _ := regexp.MatchString(c.expectedError, ErrorCause(err).Error()); !match {
+					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
+				}
+				continue
 			}
-			continue
-		}
 
-		response, err := ioutil.ReadAll(file)
-		if err != nil {
-			t.Fatal(label, err)
-		}
-
-		// Data
-		if !reflect.DeepEqual(response, c.expectedResponse) {
-			if len(response) > 1000 || len(c.expectedResponse) > 1000 {
-				t.Errorf("%s: Response didn't match (over 1000 characters, omitting)", label)
-			} else {
-				t.Errorf("%s: Expected response to be %q, but it was %q", label, c.expectedResponse, response)
+			response, err := ioutil.ReadAll(file)
+			if err != nil {
+				t.Fatal(label, err)
 			}
-		}
 
-		// Size
-		if i, _ := file.Size(); i != c.expectedSize {
-			t.Errorf("%s: Expected size to be %d, but it was %d", label, c.expectedSize, i)
+			// Data
+			if !reflect.DeepEqual(response, c.expectedResponse) {
+				if len(response) > 1000 || len(c.expectedResponse) > 1000 {
+					t.Errorf("%s: Response didn't match (over 1000 characters, omitting)", label)
+				} else {
+					t.Errorf("%s: Expected response to be %q, but it was %q", label, c.expectedResponse, response)
+				}
+			}
+
+			// Size
+			if i, _ := file.Size(); i != c.expectedSize {
+				t.Errorf("%s: Expected size to be %d, but it was %d", label, c.expectedSize, i)
+			}
 		}
 	}
 }
@@ -637,67 +641,71 @@ func TestClient_Put(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		if (c.windowsOnly && runtime.GOOS != "windows") || (c.nixOnly && runtime.GOOS == "windows") {
-			t.Logf("skipping case %q marked windowsOnly:%t; nixOnly:%t; GOOS: %q", label, c.windowsOnly, c.nixOnly, runtime.GOOS)
-			continue
-		}
+		for _, singlePort := range []bool{true, false} {
+			label := fmt.Sprintf("%s, single port mode: %t", label, singlePort)
 
-		var wr WriteRequest
-		var data []byte
-		var mu sync.Mutex
-
-		ip, port, close := newTestServer(t, nil, func(w WriteRequest) {
-			mu.Lock()
-			defer mu.Unlock()
-			if c.sendServerError {
-				w.WriteError(ErrCodeAccessViolation, "server error")
-				return
+			if (c.windowsOnly && runtime.GOOS != "windows") || (c.nixOnly && runtime.GOOS == "windows") {
+				t.Logf("skipping case %q marked windowsOnly:%t; nixOnly:%t; GOOS: %q", label, c.windowsOnly, c.nixOnly, runtime.GOOS)
+				continue
 			}
-			wr = w
 
-			d, err := ioutil.ReadAll(w)
+			var wr WriteRequest
+			var data []byte
+			var mu sync.Mutex
+
+			ip, port, close := newTestServer(t, singlePort, nil, func(w WriteRequest) {
+				mu.Lock()
+				defer mu.Unlock()
+				if c.sendServerError {
+					w.WriteError(ErrCodeAccessViolation, "server error")
+					return
+				}
+				wr = w
+
+				d, err := ioutil.ReadAll(w)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = d
+			})
+			defer close()
+
+			client, err := NewClient(c.opts...)
 			if err != nil {
 				t.Fatal(err)
 			}
-			data = d
-		})
-		defer close()
 
-		client, err := NewClient(c.opts...)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		size := 0
-		if !c.omitSize {
-			size = len(c.send)
-		}
-
-		url := strings.Replace(c.url, "#host#", ip, 1)
-		url = strings.Replace(url, "#port#", strconv.Itoa(port), 1)
-
-		err = client.Put(url, bytes.NewReader(c.send), int64(size))
-		mu.Lock()
-		mu.Unlock()
-		if err != nil {
-			if match, _ := regexp.MatchString(c.expectedError, ErrorCause(err).Error()); !match {
-				t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
+			size := 0
+			if !c.omitSize {
+				size = len(c.send)
 			}
-			continue
-		}
 
-		// Data
-		if !reflect.DeepEqual(data, c.expectedData) {
-			if len(data) > 1000 || len(c.expectedData) > 1000 {
-				t.Errorf("%s: Response didn't match (over 1000 characters, omitting)", label)
-			} else {
-				t.Errorf("%s: Expected response to be %q, but it was %q", label, c.expectedData, data)
+			url := strings.Replace(c.url, "#host#", ip, 1)
+			url = strings.Replace(url, "#port#", strconv.Itoa(port), 1)
+
+			err = client.Put(url, bytes.NewReader(c.send), int64(size))
+			mu.Lock()
+			mu.Unlock()
+			if err != nil {
+				if match, _ := regexp.MatchString(c.expectedError, ErrorCause(err).Error()); !match {
+					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
+				}
+				continue
 			}
-		}
 
-		// Size
-		if size, _ := wr.Size(); size != c.expectedSize {
-			t.Errorf("%s: Expected size to be %d, but it was %d", label, c.expectedSize, size)
+			// Data
+			if !reflect.DeepEqual(data, c.expectedData) {
+				if len(data) > 1000 || len(c.expectedData) > 1000 {
+					t.Errorf("%s: Response didn't match (over 1000 characters, omitting)", label)
+				} else {
+					t.Errorf("%s: Expected response to be %q, but it was %q", label, c.expectedData, data)
+				}
+			}
+
+			// Size
+			if size, _ := wr.Size(); size != c.expectedSize {
+				t.Errorf("%s: Expected size to be %d, but it was %d", label, c.expectedSize, size)
+			}
 		}
 	}
 }
@@ -801,8 +809,9 @@ func TestClient_parseURL(t *testing.T) {
 	}
 }
 
-func newTestServer(t *testing.T, rh ReadHandlerFunc, wh WriteHandlerFunc) (string, int, func()) {
-	s, err := NewServer("127.0.0.1:0")
+func newTestServer(t *testing.T, singlePort bool, rh ReadHandlerFunc, wh WriteHandlerFunc) (string, int, func()) {
+	s, err := NewServer("127.0.0.1:0", ServerSinglePort(singlePort))
+
 	if err != nil {
 		t.Fatalf("newTestServer: %v\n", err)
 	}

@@ -6,6 +6,7 @@ package trivialt
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net"
 	"strconv"
@@ -49,10 +50,25 @@ func newConn(udpNet string, mode transferMode, addr *net.UDPAddr) (*conn, error)
 		windowsize: defaultWindowsize,
 		retransmit: defaultRetransmit,
 		mode:       mode,
-		buf:        make([]byte, 4+defaultBlksize), // +4 for headers
 	}
+	c.rx.buf = make([]byte, 4+defaultBlksize) // +4 for headers
 
 	return c, nil
+}
+
+func newSinglePortConn(addr *net.UDPAddr, mode transferMode, netConn *net.UDPConn, reqChan chan []byte) *conn {
+	return &conn{
+		log:        newLogger(addr.String()),
+		remoteAddr: addr,
+		blksize:    defaultBlksize,
+		timeout:    defaultTimeout,
+		windowsize: defaultWindowsize,
+		retransmit: defaultRetransmit,
+		mode:       mode,
+		buf:        make([]byte, 4+defaultBlksize), // +4 for headers
+		reqChan:    reqChan,
+		netConn:    netConn,
+	}
 }
 
 // newConnFromHost wraps newConn and looks up the target's address from a string
@@ -73,6 +89,10 @@ type conn struct {
 	log        *logger
 	netConn    *net.UDPConn // Underlying network connection
 	remoteAddr net.Addr     // Address of the remote server or client
+
+	// Single Port Mode
+	reqChan chan []byte
+	timer   *time.Timer
 
 	// Transfer type
 	isClient bool // Whether or not we're the client, gets set by sendRequest
@@ -212,13 +232,12 @@ func (c *conn) sendRequest() error {
 
 	// Receive response
 	for retries := 0; ; {
-		n, addr, err := c.readFromNet(c.buf)
+		addr, err := c.readFromNet()
 		if err == nil {
-			// Update address
-			c.remoteAddr = addr
-
-			// Set rx bytes
-			c.rx.setBytes(c.buf[:n])
+			if c.reqChan == nil {
+				// Update address
+				c.remoteAddr = addr
+			}
 			break
 		}
 
@@ -301,7 +320,6 @@ func (c *conn) write(p []byte) (int, error) {
 			return 0, wrapError(err, "parsing options before write")
 		}
 	}
-
 	// Copy to buffer
 	read, err := c.txBuf.Write(p)
 	if err != nil {
@@ -403,8 +421,8 @@ func (c *conn) readSetup() error {
 
 	// Set buf size
 	needed := int(c.blksize + 4)
-	if len(c.buf) != needed {
-		c.buf = make([]byte, needed)
+	if len(c.rx.buf) != needed {
+		c.rx.buf = make([]byte, needed)
 	}
 
 	// If there we're not options negotiated, send ACK
@@ -472,9 +490,8 @@ func (c *conn) read(p []byte) (int, error) {
 func (c *conn) readData() error {
 	for retries := 0; ; {
 		c.log.trace("Waiting for DATA from %s\n", c.remoteAddr)
-		n, _, err := c.readFromNet(c.buf)
+		_, err := c.readFromNet()
 		if err == nil {
-			c.rx.setBytes(c.buf[:n])
 			break
 		}
 
@@ -497,8 +514,6 @@ func (c *conn) readData() error {
 		return wrapError(err, "validating read data")
 	}
 
-	c.log.trace("Received block %d\n", c.rx.block())
-
 	// Check for opcode
 	switch op := c.rx.opcode(); op {
 	case opCodeDATA:
@@ -509,6 +524,8 @@ func (c *conn) readData() error {
 		return wrapError(&errUnexpectedDatagram{dg: c.rx.String()}, "read data response")
 	}
 
+	c.log.trace("Received block %d\n", c.rx.block())
+
 	return nil
 }
 
@@ -517,16 +534,20 @@ func (c *conn) ackData() error {
 	switch diff := c.rx.block() - c.block; {
 	case diff == 1:
 		// Next block as expected; increment window and block
+		c.log.trace("ackData diff: %d, current block: %d, rx block %d", diff, c.block, c.rx.block())
 		c.block++
 		c.window++
 		c.catchup = false
 	case diff == 0:
 		// Same block again, ignore
+		c.log.trace("ackData diff: %d, current block: %d, rx block %d", diff, c.block, c.rx.block())
 		return errBlockSequence
 	case diff > c.windowsize:
+		c.log.trace("ackData diff: %d, current block: %d, rx block %d", diff, c.block, c.rx.block())
 		// Sender is behind, missed ACK? Wait for catchup
 		return errBlockSequence
 	case diff <= c.windowsize:
+		c.log.trace("ackData diff: %d, current block: %d, rx block %d", diff, c.block, c.rx.block())
 		// We missed blocks
 		if c.catchup {
 			// Ignore, we need to catchup with server
@@ -544,6 +565,7 @@ func (c *conn) ackData() error {
 
 	// If we've reached the windowsize, send ACK and reset window
 	if c.window >= c.windowsize || c.rx.offset < int(c.blksize) {
+		c.log.trace("window %d, windowsize: %d, offset: %d, blksize: %d", c.window, c.windowsize, c.rx.offset, c.blksize)
 		c.window = 0
 		c.log.trace("Window %d reached, sending ACK for %d\n", c.windowsize, c.block)
 		if err := c.sendAck(c.block); err == nil {
@@ -558,17 +580,19 @@ func (c *conn) ackData() error {
 func (c *conn) Close() (err error) {
 	c.log.debug("Closing connection to %s\n", c.remoteAddr)
 
-	defer func() {
-		// Close network even if another error occurs
-		//
-		cErr := c.netConn.Close()
-		if cErr != nil {
-			c.log.debug("error closing network connection:", cErr)
-		}
-		if err == nil {
-			err = cErr
-		}
-	}()
+	if c.reqChan == nil {
+		defer func() {
+			// Close network even if another error occurs
+			//
+			cErr := c.netConn.Close()
+			if cErr != nil {
+				c.log.debug("error closing network connection:", cErr)
+			}
+			if err == nil {
+				err = cErr
+			}
+		}()
+	}
 
 	// Can't write if an error has been sent/received
 	if c.err != nil {
@@ -577,6 +601,7 @@ func (c *conn) Close() (err error) {
 
 	// netasciiEnc needs to be flushed if it's in use
 	if c.netasciiEnc != nil {
+		c.log.trace("Flushing netascii encoder")
 		if err := c.netasciiEnc.Flush(); err != nil {
 			return wrapError(err, "flushing netascii encoder before Close")
 		}
@@ -591,6 +616,15 @@ func (c *conn) Close() (err error) {
 
 			err := c.getAck()
 			if err == nil {
+				// Recheck data, window could have been missed
+				if c.txBuf.Len() >= int(c.blksize) {
+					c.log.trace("%d", c.txBuf.Len())
+					c.write([]byte{})
+					continue
+				}
+				if c.txBuf.Len() > 0 {
+					continue
+				}
 				break
 			}
 
@@ -696,7 +730,7 @@ func (c *conn) sendAck(block uint16) error {
 func (c *conn) getAck() error {
 	for {
 		c.log.trace("Waiting for ACK from %s\n", c.remoteAddr)
-		numBytes, sAddr, err := c.readFromNet(c.buf)
+		sAddr, err := c.readFromNet()
 		if err != nil {
 			return wrapError(err, "network read failed")
 		}
@@ -708,7 +742,7 @@ func (c *conn) getAck() error {
 		// discarded as erroneously sent from somewhere else.  An error packet
 		// should be sent to the source of the incorrect packet, while not
 		// disturbing the transfer."
-		if sAddr.String() != c.remoteAddr.String() {
+		if c.reqChan == nil && sAddr.String() != c.remoteAddr.String() {
 			c.log.err("Received unexpected datagram from %v, expected %v\n", sAddr, c.remoteAddr)
 			go func() {
 				var err datagram
@@ -719,8 +753,6 @@ func (c *conn) getAck() error {
 
 			continue // Read another datagram
 		}
-
-		c.rx.setBytes(c.buf[:numBytes])
 		break
 	}
 
@@ -742,6 +774,10 @@ func (c *conn) getAck() error {
 
 	// Check block #
 	if rxBlock := c.rx.block(); rxBlock != c.block {
+		if rxBlock > c.block {
+			// Out of order ACKs can cause this scenario, ignore the ACK
+			return nil
+		}
 		c.log.debug("Expected ACK for block %d, got %d. Resetting to block %d.", c.block, rxBlock, rxBlock)
 		c.txBuf.UnreadSlots(int(c.block - rxBlock))
 		c.block = rxBlock
@@ -758,11 +794,31 @@ func (c *conn) remoteError() error {
 }
 
 // readFromNet reads from netConn into b.
-func (c *conn) readFromNet(b []byte) (int, net.Addr, error) {
-	if err := c.netConn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
-		return 0, nil, wrapError(err, "setting network read deadline")
+func (c *conn) readFromNet() (net.Addr, error) {
+	if c.reqChan != nil {
+		// Setup timer
+		if c.timer == nil {
+			c.timer = time.NewTimer(c.timeout)
+		} else {
+			c.timer.Reset(c.timeout)
+		}
+
+		// Single port mode
+		select {
+		case c.rx.buf = <-c.reqChan:
+			c.rx.offset = len(c.rx.buf)
+			return nil, nil
+		case <-c.timer.C:
+			return nil, errors.New("timeout reading from channel")
+		}
 	}
-	return c.netConn.ReadFrom(b)
+
+	if err := c.netConn.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+		return nil, wrapError(err, "setting network read deadline")
+	}
+	n, addr, err := c.netConn.ReadFrom(c.rx.buf)
+	c.rx.offset = n
+	return addr, err
 }
 
 // writeToNet writes tx to netConn.
