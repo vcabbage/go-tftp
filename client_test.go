@@ -406,7 +406,11 @@ func TestClient_Get(t *testing.T) {
 				continue
 			}
 
+			var mu sync.Mutex
+
 			ip, port, close := newTestServer(t, singlePort, func(w ReadRequest) {
+				mu.Lock()
+				defer mu.Unlock()
 				if c.sendServerError {
 					w.WriteError(ErrCodeAccessViolation, "server error")
 					return
@@ -432,10 +436,14 @@ func TestClient_Get(t *testing.T) {
 				if match, _ := regexp.MatchString(c.expectedError, ErrorCause(err).Error()); !match {
 					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
 				}
+				mu.Lock()
+				mu.Unlock()
 				continue
 			}
 
 			response, err := ioutil.ReadAll(file)
+			mu.Lock()
+			mu.Unlock()
 			if err != nil {
 				t.Fatal(label, err)
 			}
