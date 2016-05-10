@@ -18,6 +18,7 @@ type Server struct {
 	net     string
 	addrStr string
 	addr    *net.UDPAddr
+	connMu  sync.RWMutex
 	conn    *net.UDPConn
 	close   bool
 
@@ -31,29 +32,29 @@ type Server struct {
 }
 
 type connManager struct {
+	sync.RWMutex
 	reqMap map[string]chan []byte
-	reqMu  sync.RWMutex
 }
 
 func (m *connManager) New(addr net.Addr) chan []byte {
-	m.reqMu.Lock()
-	defer m.reqMu.Unlock()
 	reqChan := make(chan []byte, 64) // TODO (better value)
+	m.Lock()
 	m.reqMap[addr.String()] = reqChan
+	m.Unlock()
 	return reqChan
 }
 
 func (m *connManager) Get(addr net.Addr) (chan []byte, bool) {
-	m.reqMu.RLock()
-	defer m.reqMu.RUnlock()
+	m.RLock()
 	reqChan, ok := m.reqMap[addr.String()]
+	m.RUnlock()
 	return reqChan, ok
 }
 
 func (m *connManager) Remove(addr net.Addr) {
-	m.reqMu.Lock()
-	defer m.reqMu.Unlock()
+	m.Lock()
 	delete(m.reqMap, addr.String())
+	m.Unlock()
 }
 
 // NewServer returns a configured Server.
@@ -82,6 +83,8 @@ func NewServer(addr string, opts ...ServerOpt) (*Server, error) {
 // Addr is the network address of the server. It is available
 // after the server has been started.
 func (s *Server) Addr() (*net.UDPAddr, error) {
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
 	if s.conn == nil {
 		return nil, ErrAddressNotAvailable
 	}
@@ -104,8 +107,12 @@ func (s *Server) Serve(conn *net.UDPConn) error {
 		return ErrNoRegisteredHandlers
 	}
 
+	s.connMu.Lock()
 	s.conn = conn
+	s.connMu.Unlock()
 
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
 	buf := make([]byte, 65536) // Largest possible TFTP datagram
 	for {
 		numBytes, addr, err := conn.ReadFromUDP(buf)
@@ -131,8 +138,16 @@ func (s *Server) Serve(conn *net.UDPConn) error {
 	}
 }
 
+func (s *Server) Connected() bool {
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
+	return s.conn != nil
+}
+
 // Close stops the server and closes the network connection.
 func (s *Server) Close() error {
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
 	s.close = true
 	return s.conn.Close()
 }

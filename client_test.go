@@ -825,7 +825,7 @@ func newTestServer(t *testing.T, singlePort bool, rh ReadHandlerFunc, wh WriteHa
 	}
 
 	// Wait for server to start
-	for s.conn == nil {
+	for !s.Connected() {
 		runtime.Gosched() // Prevents gettting stuck here
 	}
 

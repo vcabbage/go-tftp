@@ -257,6 +257,7 @@ func TestConn_getAck(t *testing.T) {
 		}()
 
 		err := tConn.getAck()
+		wg.Wait()
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -266,7 +267,6 @@ func TestConn_getAck(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		wg.Wait()
 
 		// Block number
 		if tConn.block != c.expectedBlock {
@@ -418,6 +418,7 @@ func TestConn_sendWriteRequest(t *testing.T) {
 		}()
 
 		err := tConn.sendWriteRequest("file", options{})
+		wg.Wait()
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -427,7 +428,6 @@ func TestConn_sendWriteRequest(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		wg.Wait()
 
 		if tConn.blksize != c.expectedBlksize {
 			t.Errorf("%s: Expected blocksize to be %d, but it was %d", label, c.expectedBlksize, tConn.blksize)
@@ -617,6 +617,7 @@ func TestConn_sendReadRequest(t *testing.T) {
 		}()
 
 		err := tConn.sendReadRequest("file", options{})
+		wg.Wait()
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -626,7 +627,6 @@ func TestConn_sendReadRequest(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		wg.Wait()
 
 		// Flush buffer
 		if tConn.netasciiEnc != nil {
@@ -753,6 +753,7 @@ func TestConn_readData(t *testing.T) {
 		}()
 
 		err := tConn.readData()
+		wg.Wait()
 		// Error
 		if err != nil {
 			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
@@ -760,7 +761,6 @@ func TestConn_readData(t *testing.T) {
 			}
 			continue
 		}
-		wg.Wait()
 
 		// Data
 		if string(tConn.rx.data()) != string(c.expectedData) {
