@@ -1,10 +1,10 @@
 # **trivialt**
 
 [![Go Report Card](https://goreportcard.com/badge/vcabbage/trivialt)](https://goreportcard.com/report/vcabbage/trivialt)
-[![Coverage Status](https://coveralls.io/repos/github/vCabbage/trivialt/badge.svg?branch=master)](https://coveralls.io/github/vCabbage/trivialt?branch=master)
-[![Build Status](https://travis-ci.org/vCabbage/trivialt.svg?branch=master)](https://travis-ci.org/vCabbage/trivialt)
-[![Build status](https://ci.appveyor.com/api/projects/status/0sxw1t6jjoe4yc9p/branch/master?svg=true)](https://ci.appveyor.com/project/vCabbage/trivialt/branch/master)
-[![GoDoc](https://godoc.org/github.com/vCabbage/trivialt?status.svg)](http://godoc.org/github.com/vCabbage/trivialt)
+[![Coverage Status](https://coveralls.io/repos/github/vcabbage/trivialt/badge.svg?branch=master)](https://coveralls.io/github/vcabbage/trivialt?branch=master)
+[![Build Status](https://travis-ci.org/vcabbage/trivialt.svg?branch=master)](https://travis-ci.org/vcabbage/trivialt)
+[![Build status](https://ci.appveyor.com/api/projects/status/0sxw1t6jjoe4yc9p/branch/master?svg=true)](https://ci.appveyor.com/project/vcabbage/trivialt/branch/master)
+[![GoDoc](https://godoc.org/github.com/vcabbage/trivialt?status.svg)](http://godoc.org/github.com/vcabbage/trivialt)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/vcabbage/trivialt/master/LICENSE)
 
 
@@ -47,7 +47,7 @@ If you have the Go toolchain installed you can simply `go get` the packages. Thi
 go get -u github.com/vcabbage/trivialt/...
 ```
 
-Pre-built binaries can be downloaded from the [release page](https://github.com/vCabbage/trivialt/releases).
+Pre-built binaries can be downloaded from the [release page](https://github.com/vcabbage/trivialt/releases).
 
 ## Command Usage
 
@@ -270,7 +270,7 @@ server.ListenAndServe()
 }
 ```
 
-Full example in [examples/httpproxy/httpproxy.go](https://github.com/vCabbage/trivialt/blob/master/examples/httpproxy/httpproxy.go).
+Full example in [examples/httpproxy/httpproxy.go](https://github.com/vcabbage/trivialt/blob/master/examples/httpproxy/httpproxy.go).
 
 #### Save Files to Database
 
@@ -308,4 +308,4 @@ func (db *tftpDB) ReceiveTFTP(w trivialt.WriteRequest) {
 2016/04/30 11:20:27 Inserted 32 bytes of data from 127.0.0.1. (ID=13)
 ```
 
-Full example including checking the size before accepting the request in [examples/database/database.go](https://github.com/vCabbage/trivialt/blob/master/examples/database/database.go).
+Full example including checking the size before accepting the request in [examples/database/database.go](https://github.com/vcabbage/trivialt/blob/master/examples/database/database.go).

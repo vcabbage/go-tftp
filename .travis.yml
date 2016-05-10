@@ -1,6 +1,5 @@
 language: go
 sudo: false
-go_import_path: github.com/vcabbage/trivialt
 go:
  - 1.5.4
  - 1.6.2
