@@ -138,6 +138,7 @@ func (s *Server) Serve(conn *net.UDPConn) error {
 	}
 }
 
+// Connected is true if the server has started serving.
 func (s *Server) Connected() bool {
 	s.connMu.RLock()
 	defer s.connMu.RUnlock()
