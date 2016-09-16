@@ -57,7 +57,7 @@ func TestFileServer_ServeTFTP(t *testing.T) {
 	}
 
 	for label, c := range cases {
-		fs := FileServer("test-fixtures")
+		fs := FileServer("testdata")
 
 		req := readRequestMock{name: c.name}
 

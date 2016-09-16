@@ -848,7 +848,7 @@ func newTestServer(t *testing.T, singlePort bool, rh ReadHandlerFunc, wh WriteHa
 }
 
 func getTestData(t *testing.T, name string) []byte {
-	path := filepath.Join("test-fixtures", name)
+	path := filepath.Join("testdata", name)
 
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
