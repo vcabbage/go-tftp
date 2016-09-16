@@ -247,7 +247,7 @@ func (c *conn) sendRequest() error {
 			continue
 		}
 
-		return wrapError(err, "recieving request response")
+		return wrapError(err, "receiving request response")
 	}
 
 	// Extract and validate response
@@ -356,7 +356,7 @@ func (c *conn) write(p []byte) (int, error) {
 
 			// Retry until maxRetransmit
 			retries++
-			c.log.debug("Error recieving ACK (retry %d): %v\n", retries, err)
+			c.log.debug("Error receiving ACK (retry %d): %v\n", retries, err)
 			if retries > c.retransmit {
 				c.log.debug("Max retries exceeded")
 				c.sendError(ErrCodeNotDefined, "max retries reached")
@@ -635,7 +635,7 @@ func (c *conn) Close() (err error) {
 
 			// Retry until maxRetransmit
 			retries++
-			c.log.debug("Error recieving ACK (retry %d): %v\n", retries, err)
+			c.log.debug("Error receiving ACK (retry %d): %v\n", retries, err)
 			if retries > c.retransmit {
 				c.log.debug("Max retries exceeded")
 				c.sendError(ErrCodeNotDefined, "max retries reached")
