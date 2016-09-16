@@ -20,6 +20,7 @@ type readRequestMock struct {
 	errCode ErrorCode
 	errMsg  string
 	size    *int64
+	tmode   TransferMode
 }
 
 func (r *readRequestMock) Addr() *net.UDPAddr          { return r.addr }
@@ -30,6 +31,7 @@ func (r *readRequestMock) WriteError(c ErrorCode, m string) {
 	r.errCode = c
 	r.errMsg = m
 }
+func (r *readRequestMock) TransferMode() TransferMode { return r.tmode }
 
 func TestFileServer_ServeTFTP(t *testing.T) {
 	text := getTestData(t, "text")
@@ -96,6 +98,7 @@ type writeRequestMock struct {
 	errCode ErrorCode
 	errMsg  string
 	size    *int64
+	tmode   TransferMode
 }
 
 func (r *writeRequestMock) Addr() *net.UDPAddr         { return r.addr }
@@ -111,6 +114,7 @@ func (r *writeRequestMock) WriteError(c ErrorCode, m string) {
 	r.errCode = c
 	r.errMsg = m
 }
+func (r *writeRequestMock) TransferMode() TransferMode { return r.tmode }
 
 func TestFileServer_ReceiveTFTP(t *testing.T) {
 	text := getTestData(t, "text")

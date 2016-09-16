@@ -37,7 +37,7 @@ func TestNewClient(t *testing.T) {
 
 		expectedError      error
 		expectedOpts       map[string]string
-		expectedMode       transferMode
+		expectedMode       TransferMode
 		expectedRetransmit int
 	}{
 		"default": {

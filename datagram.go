@@ -59,10 +59,10 @@ const (
 	ErrCodeNoSuchUser ErrorCode = 0x7
 
 	// ModeNetASCII is the string for netascii transfer mode
-	ModeNetASCII transferMode = "netascii"
+	ModeNetASCII TransferMode = "netascii"
 	// ModeOctet is the string for octet/binary transfer mode
-	ModeOctet transferMode = "octet"
-	modeMail  transferMode = "mail"
+	ModeOctet TransferMode = "octet"
+	modeMail  TransferMode = "mail"
 
 	optBlocksize    = "blksize"
 	optTimeout      = "timeout"
@@ -70,7 +70,8 @@ const (
 	optWindowSize   = "windowsize"
 )
 
-type transferMode string
+// TransferMode is a TFTP transer mode
+type TransferMode string
 
 var (
 	errorStrings = map[ErrorCode]string{
@@ -164,11 +165,11 @@ func (d *datagram) writeError(code ErrorCode, msg string) {
 	d.writeNull()
 }
 
-func (d *datagram) writeReadReq(filename string, mode transferMode, options map[string]string) {
+func (d *datagram) writeReadReq(filename string, mode TransferMode, options map[string]string) {
 	d.writeReq(opCodeRRQ, filename, mode, options)
 }
 
-func (d *datagram) writeWriteReq(filename string, mode transferMode, options map[string]string) {
+func (d *datagram) writeWriteReq(filename string, mode TransferMode, options map[string]string) {
 	d.writeReq(opCodeWRQ, filename, mode, options)
 }
 
@@ -187,7 +188,7 @@ func (d *datagram) writeOptionAck(options map[string]string) {
 }
 
 // Combines duplicate logic from RRQ and WRQ
-func (d *datagram) writeReq(o opcode, filename string, mode transferMode, options map[string]string) {
+func (d *datagram) writeReq(o opcode, filename string, mode TransferMode, options map[string]string) {
 	// This is ugly, could just set buf to 512
 	// or use a bytes buffer. Intend to switch to bytes buffer
 	// after implementing all RFCs so that perf can be compared
@@ -239,9 +240,9 @@ func (d *datagram) filename() string {
 }
 
 // Mode from RRQ and WRQ datagrams
-func (d *datagram) mode() transferMode {
+func (d *datagram) mode() TransferMode {
 	fields := bytes.Split(d.buf[2:], []byte{0x0})
-	return transferMode(fields[1])
+	return TransferMode(fields[1])
 }
 
 // Opcode from all datagrams

@@ -15,7 +15,7 @@ import (
 type Client struct {
 	log  *logger
 	net  string            // UDP network (ie, "udp", "udp4", "udp6")
-	mode transferMode      // TFTP transfer mode
+	mode TransferMode      // TFTP transfer mode
 	opts map[string]string // Map of TFTP options (RFC2347)
 
 	retransmit int // Per-packet retransmission limit
@@ -209,7 +209,7 @@ type ClientOpt func(*Client) error
 // ClientMode configures the mode.
 //
 // Valid options are ModeNetASCII and ModeOctet. Default is ModeNetASCII.
-func ClientMode(mode transferMode) ClientOpt {
+func ClientMode(mode TransferMode) ClientOpt {
 	return func(c *Client) error {
 		if mode != ModeNetASCII && mode != ModeOctet {
 			return ErrInvalidMode

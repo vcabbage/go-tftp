@@ -23,11 +23,11 @@ func TestNewConn(t *testing.T) {
 
 	cases := map[string]struct {
 		net  string
-		mode transferMode
+		mode TransferMode
 		addr *net.UDPAddr
 
 		expectedAddr  *net.UDPAddr
-		expectedMode  transferMode
+		expectedMode  TransferMode
 		expectedError string
 	}{
 		"success": {
@@ -458,7 +458,7 @@ func TestConn_sendReadRequest(t *testing.T) {
 
 	cases := map[string]struct {
 		timeout  time.Duration
-		mode     transferMode
+		mode     TransferMode
 		connFunc func(string, *net.UDPConn, *net.UDPAddr)
 
 		expectedBuf        string

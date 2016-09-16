@@ -34,7 +34,7 @@ var defaultOptions = map[string]string{
 //
 // udpNet is one of "udp", "udp4", or "udp6"
 // addr is the address of the target client or server
-func newConn(udpNet string, mode transferMode, addr *net.UDPAddr) (*conn, error) {
+func newConn(udpNet string, mode TransferMode, addr *net.UDPAddr) (*conn, error) {
 	// Start listening, an empty UDPAddr will cause the system to assign a port
 	netConn, err := net.ListenUDP(udpNet, &net.UDPAddr{})
 	if err != nil {
@@ -56,7 +56,7 @@ func newConn(udpNet string, mode transferMode, addr *net.UDPAddr) (*conn, error)
 	return c, nil
 }
 
-func newSinglePortConn(addr *net.UDPAddr, mode transferMode, netConn *net.UDPConn, reqChan chan []byte) *conn {
+func newSinglePortConn(addr *net.UDPAddr, mode TransferMode, netConn *net.UDPConn, reqChan chan []byte) *conn {
 	return &conn{
 		log:        newLogger(addr.String()),
 		remoteAddr: addr,
@@ -74,7 +74,7 @@ func newSinglePortConn(addr *net.UDPAddr, mode transferMode, netConn *net.UDPCon
 // newConnFromHost wraps newConn and looks up the target's address from a string
 //
 // This function is used by Client
-func newConnFromHost(udpNet string, mode transferMode, host string) (*conn, error) {
+func newConnFromHost(udpNet string, mode TransferMode, host string) (*conn, error) {
 	// Resolve server
 	addr, err := net.ResolveUDPAddr(udpNet, host)
 	if err != nil {
@@ -102,7 +102,7 @@ type conn struct {
 	blksize    uint16        // Size of DATA payloads
 	timeout    time.Duration // How long to wait before resending packets
 	windowsize uint16        // Number of DATA packets between ACKs
-	mode       transferMode  // octet or netascii
+	mode       TransferMode  // octet or netascii
 	tsize      *int64        // Size of the file being sent/received
 
 	// Other, non-negotiable options

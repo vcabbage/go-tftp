@@ -182,7 +182,7 @@ func TestDatagram(t *testing.T) {
 		code       opcode
 		block      uint16
 		filename   *string
-		mode       *transferMode
+		mode       *TransferMode
 		opts       options
 		errCode    *ErrorCode
 		errMessage *string
@@ -461,7 +461,7 @@ func ptrString(s string) *string {
 	return &s
 }
 
-func ptrMode(s transferMode) *transferMode {
+func ptrMode(s TransferMode) *TransferMode {
 	return &s
 }
 

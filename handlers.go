@@ -48,6 +48,9 @@ type WriteRequest interface {
 	// connection. WriteError can only be called once. Read cannot
 	// be called after an error has been written.
 	WriteError(ErrorCode, string)
+
+	// TransferMode returns the TFTP transfer mode requested by the client.
+	TransferMode() TransferMode
 }
 
 // writeRequest implements WriteRequest.
@@ -80,6 +83,10 @@ func (w *writeRequest) WriteError(c ErrorCode, s string) {
 	w.conn.sendError(c, s)
 }
 
+func (w *writeRequest) TransferMode() TransferMode {
+	return w.conn.mode
+}
+
 // ReadRequest is provided to a ReadHandler's ServeTFTP method.
 type ReadRequest interface {
 	// Addr is the network address of the client.
@@ -99,6 +106,9 @@ type ReadRequest interface {
 	// WriteSize sets the transfer size (tsize) value to be sent to
 	// the client. It must be called before any calls to Write.
 	WriteSize(int64)
+
+	// TransferMode returns the TFTP transfer mode requested by the client.
+	TransferMode() TransferMode
 }
 
 // readRequest implements ReadRequest.
@@ -126,6 +136,10 @@ func (w *readRequest) WriteError(c ErrorCode, s string) {
 
 func (w *readRequest) WriteSize(i int64) {
 	w.conn.tsize = &i
+}
+
+func (w *readRequest) TransferMode() TransferMode {
+	return w.conn.mode
 }
 
 // FileServer creates a handler for sending and reciving files on the filesystem.
