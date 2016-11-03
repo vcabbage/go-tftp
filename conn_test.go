@@ -9,7 +9,6 @@ import (
 	"net"
 	"reflect"
 	"regexp"
-	"strconv"
 	"testing"
 	"time"
 )
@@ -1647,13 +1646,16 @@ func ptrInt64(i int64) *int64 {
 }
 
 func testConns(t *testing.T) (tConn *conn, sAddr *net.UDPAddr, cNetConn *net.UDPConn, closer func()) {
-	cNetConn, err := net.ListenUDP("udp4", nil)
+	// Statically chose port, letting system assign results in an error on Linux w/ nf_conntrack
+	// related to this bug http://marc.info/?l=linux-netdev&s=Possible+race+condition+in+conntracking
+	cAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 54321}
+	cNetConn, err := net.ListenUDP("udp4", cAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	cPort := cNetConn.LocalAddr().(*net.UDPAddr).Port
-	cAddr, err := net.ResolveUDPAddr("udp4", "localhost:"+strconv.Itoa(cPort))
+	sAddr = &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 54322}
+	sNetConn, err := net.ListenUDP("udp4", sAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1663,11 +1665,9 @@ func testConns(t *testing.T) (tConn *conn, sAddr *net.UDPAddr, cNetConn *net.UDP
 		t.Fatal(err)
 	}
 
-	sPort := tConn.netConn.LocalAddr().(*net.UDPAddr).Port
-	sAddr, err = net.ResolveUDPAddr("udp4", "localhost:"+strconv.Itoa(sPort))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Replace auto assigned
+	tConn.netConn.Close()
+	tConn.netConn = sNetConn
 
 	closer = func() {
 		cNetConn.Close()
