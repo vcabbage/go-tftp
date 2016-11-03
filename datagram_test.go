@@ -47,9 +47,11 @@ func TestOpcode_String(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		if c.code.String() != c.expected {
-			t.Errorf("Expected opcode(%d).String() to be %q, but it was %q", c.code, c.expected, c.code.String())
-		}
+		t.Run(c.expected, func(t *testing.T) {
+			if c.code.String() != c.expected {
+				t.Errorf("Expected opcode(%d).String() to be %q, but it was %q", c.code, c.expected, c.code.String())
+			}
+		})
 	}
 }
 
@@ -98,19 +100,23 @@ func TestErrorCode_String(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		if c.code.String() != c.expected {
-			t.Errorf("Expected errCode(%d).String() to be %q, but it was %q", c.code, c.expected, c.code.String())
-		}
+		t.Run(c.expected, func(t *testing.T) {
+			if c.code.String() != c.expected {
+				t.Errorf("Expected errCode(%d).String() to be %q, but it was %q", c.code, c.expected, c.code.String())
+			}
+		})
 	}
 }
 
 func TestDatagram_String(t *testing.T) {
-	cases := map[string]struct {
-		dg datagram
+	cases := []struct {
+		name string
+		dg   datagram
 
 		expected string
 	}{
-		"RRQ": {
+		{
+			name: "RRQ",
 			dg: func() datagram {
 				d := datagram{}
 				d.writeReadReq("readFile", ModeNetASCII, options{"first": "option"})
@@ -118,7 +124,8 @@ func TestDatagram_String(t *testing.T) {
 			}(),
 			expected: `READ_REQUEST[Filename: "readFile"; Mode: "netascii"; Options: {"first": "option"}]`,
 		},
-		"WRQ": {
+		{
+			name: "WRQ",
 			dg: func() datagram {
 				d := datagram{}
 				d.writeWriteReq("readFile", ModeNetASCII, options{})
@@ -126,7 +133,8 @@ func TestDatagram_String(t *testing.T) {
 			}(),
 			expected: `WRITE_REQUEST[Filename: "readFile"; Mode: "netascii"; Options: {}]`,
 		},
-		"DATA": {
+		{
+			name: "DATA",
 			dg: func() datagram {
 				d := datagram{}
 				d.writeData(678, []byte("the data"))
@@ -134,7 +142,8 @@ func TestDatagram_String(t *testing.T) {
 			}(),
 			expected: `DATA[Block: 678; Data Length: 8]`,
 		},
-		"OACK": {
+		{
+			name: "OACK",
 			dg: func() datagram {
 				d := datagram{}
 				d.writeOptionAck(options{"first": "option"})
@@ -142,7 +151,8 @@ func TestDatagram_String(t *testing.T) {
 			}(),
 			expected: `OPTION_ACK[Options: {"first": "option"}]`,
 		},
-		"ACK": {
+		{
+			name: "ACK",
 			dg: func() datagram {
 				d := datagram{}
 				d.writeAck(65000)
@@ -150,7 +160,8 @@ func TestDatagram_String(t *testing.T) {
 			}(),
 			expected: `ACK[Block: 65000]`,
 		},
-		"ERROR": {
+		{
+			name: "ERROR",
 			dg: func() datagram {
 				d := datagram{}
 				d.writeError(ErrCodeDiskFull, "my error")
@@ -158,22 +169,26 @@ func TestDatagram_String(t *testing.T) {
 			}(),
 			expected: `ERROR[Code: DISK_FULL; Message: "my error"]`,
 		},
-		"Bad Datagram": {
+		{
+			name:     "Bad Datagram",
 			dg:       datagram{},
 			expected: `INVALID_DATAGRAM[Error: "Datagram has no opcode"]`,
 		},
 	}
 
-	for label, c := range cases {
-		if c.dg.String() != c.expected {
-			t.Errorf("%s: Expected to be %q, but it was %q", label, c.expected, c.dg.String())
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.dg.String() != c.expected {
+				t.Errorf("expected to be %q, but it was %q", c.expected, c.dg.String())
+			}
+		})
 	}
 }
 
 func TestDatagram(t *testing.T) {
-	cases := map[string]struct {
-		dg datagram
+	cases := []struct {
+		name string
+		dg   datagram
 
 		valid      bool
 		len        int
@@ -187,7 +202,8 @@ func TestDatagram(t *testing.T) {
 		errCode    *ErrorCode
 		errMessage *string
 	}{
-		"ack": {
+		{
+			name: "ack",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeAck(3)
@@ -201,7 +217,8 @@ func TestDatagram(t *testing.T) {
 			code:   opCodeACK,
 			block:  3,
 		},
-		"data": {
+		{
+			name: "data",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeData(314, []byte("this is the data"))
@@ -213,7 +230,8 @@ func TestDatagram(t *testing.T) {
 			offset: 20,
 			code:   opCodeDATA,
 		},
-		"RRQ": {
+		{
+			name: "RRQ",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeReadReq("the file", ModeNetASCII, options{})
@@ -228,7 +246,8 @@ func TestDatagram(t *testing.T) {
 			mode:     ptrMode(ModeNetASCII),
 			opts:     options{},
 		},
-		"WRQ": {
+		{
+			name: "WRQ",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeWriteReq("a file", ModeOctet, options{})
@@ -243,7 +262,8 @@ func TestDatagram(t *testing.T) {
 			mode:     ptrMode(ModeOctet),
 			opts:     options{},
 		},
-		"OACK, no options": {
+		{
+			name: "OACK, no options",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeOptionAck(options{})
@@ -252,7 +272,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"OACK": {
+		{
+			name: "OACK",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeOptionAck(options{optBlocksize: "345"})
@@ -265,7 +286,8 @@ func TestDatagram(t *testing.T) {
 			code:   opCodeOACK,
 			opts:   options{optBlocksize: "345"},
 		},
-		"error": {
+		{
+			name: "error",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeError(ErrCodeDiskFull, "the message")
@@ -279,7 +301,8 @@ func TestDatagram(t *testing.T) {
 			errCode:    ptrErrCode(ErrCodeDiskFull),
 			errMessage: ptrString("the message"),
 		},
-		"no opcode": {
+		{
+			name: "no opcode",
 			dg: func() datagram {
 				dg := datagram{}
 				return dg
@@ -287,7 +310,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"invalid opcode": {
+		{
+			name: "invalid opcode",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.reset(2)
@@ -297,7 +321,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"empty filename": {
+		{
+			name: "empty filename",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeReadReq("", ModeOctet, options{})
@@ -307,7 +332,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"request doesn't end with null": {
+		{
+			name: "request doesn't end with null",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeReadReq("file", ModeOctet, options{})
@@ -317,7 +343,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"request has odd number of null": {
+		{
+			name: "request has odd number of null",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeReadReq("file\x00name", ModeOctet, options{})
@@ -326,7 +353,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"mail": {
+		{
+			name: "mail",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeReadReq("file", modeMail, options{})
@@ -335,7 +363,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"invalid mode": {
+		{
+			name: "invalid mode",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeReadReq("file", "fast", options{})
@@ -344,7 +373,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"corrupt block #": {
+		{
+			name: "corrupt block #",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.writeData(133, []byte("data"))
@@ -354,7 +384,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"corrupt error": {
+		{
+			name: "corrupt error",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.reset(4)
@@ -365,7 +396,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"error doesn't end with null": {
+		{
+			name: "error doesn't end with null",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.reset(8)
@@ -377,7 +409,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"error has more than one null": {
+		{
+			name: "error has more than one null",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.reset(8)
@@ -387,7 +420,8 @@ func TestDatagram(t *testing.T) {
 
 			valid: false,
 		},
-		"corrupt options": {
+		{
+			name: "corrupt options",
 			dg: func() datagram {
 				dg := datagram{}
 				dg.reset(10)
@@ -401,59 +435,61 @@ func TestDatagram(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		// Valid
-		if err := c.dg.validate(); (err == nil) != c.valid {
-			t.Errorf("%s: Expected %s to be valid %t, but it wasn't: %s", label, c.dg, c.valid, err)
-		}
-		if c.valid == false {
-			continue // No point in checking an invalid datagram
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Valid
+			if err := c.dg.validate(); (err == nil) != c.valid {
+				t.Errorf("expected %s to be valid %t, but it wasn't: %s", c.dg, c.valid, err)
+			}
+			if !c.valid {
+				return // No point in checking an invalid datagram
+			}
 
-		// Len
-		if len(c.dg.buf) != c.len {
-			t.Errorf("%s: Expected %s to have len %d, but it was %d", label, c.dg, c.len, len(c.dg.buf))
-		}
+			// Len
+			if len(c.dg.buf) != c.len {
+				t.Errorf("expected %s to have len %d, but it was %d", c.dg, c.len, len(c.dg.buf))
+			}
 
-		// Data
-		if c.data != nil && bytes.Compare(c.dg.data(), c.data) != 0 {
-			t.Errorf("%s: Expected %s, to have data %q, but it was %q", label, c.dg, c.data, c.dg.data())
-		}
+			// Data
+			if c.data != nil && !bytes.Equal(c.dg.data(), c.data) {
+				t.Errorf("expected %s, to have data %q, but it was %q", c.dg, c.data, c.dg.data())
+			}
 
-		// Offset
-		if c.offset != c.dg.offset {
-			t.Errorf("%s: Expected %s to have offset %d, but it was %d", label, c.dg, c.offset, c.dg.offset)
-		}
+			// Offset
+			if c.offset != c.dg.offset {
+				t.Errorf("expected %s to have offset %d, but it was %d", c.dg, c.offset, c.dg.offset)
+			}
 
-		// Code
-		if c.code != c.dg.opcode() {
-			t.Errorf("%s: Expected %s to have code %d, but it was %d", label, c.dg, c.code, c.dg.opcode())
-		}
+			// Code
+			if c.code != c.dg.opcode() {
+				t.Errorf("expected %s to have code %d, but it was %d", c.dg, c.code, c.dg.opcode())
+			}
 
-		// Filename
-		if c.filename != nil && *c.filename != c.dg.filename() {
-			t.Errorf("%s: Expected %s to have filename %q, but it was %q", label, c.dg, *c.filename, c.dg.filename())
-		}
+			// Filename
+			if c.filename != nil && *c.filename != c.dg.filename() {
+				t.Errorf("expected %s to have filename %q, but it was %q", c.dg, *c.filename, c.dg.filename())
+			}
 
-		// Mode
-		if c.mode != nil && *c.mode != c.dg.mode() {
-			t.Errorf("%s: Expected %s to have mode %q, but it was %q", label, c.dg, *c.mode, c.dg.mode())
-		}
+			// Mode
+			if c.mode != nil && *c.mode != c.dg.mode() {
+				t.Errorf("expected %s to have mode %q, but it was %q", c.dg, *c.mode, c.dg.mode())
+			}
 
-		// Options
-		if c.opts != nil && !reflect.DeepEqual(c.opts, c.dg.options()) {
-			t.Errorf("%s: Expected %s to have options %q, but it was %q", label, c.dg, c.opts, c.dg.options())
-		}
+			// Options
+			if c.opts != nil && !reflect.DeepEqual(c.opts, c.dg.options()) {
+				t.Errorf("expected %s to have options %q, but it was %q", c.dg, c.opts, c.dg.options())
+			}
 
-		// Error Code
-		if c.errCode != nil && *c.errCode != c.dg.errorCode() {
-			t.Errorf("%s: Expected %s to have error code %d, but it was %d", label, c.dg, *c.errCode, c.dg.errorCode())
-		}
+			// Error Code
+			if c.errCode != nil && *c.errCode != c.dg.errorCode() {
+				t.Errorf("expected %s to have error code %d, but it was %d", c.dg, *c.errCode, c.dg.errorCode())
+			}
 
-		// Error Message
-		if c.errMessage != nil && *c.errMessage != c.dg.errMsg() {
-			t.Errorf("%s: Expected %s to have error message %q, but it was %q", label, c.dg, *c.errMessage, c.dg.errMsg())
-		}
+			// Error Message
+			if c.errMessage != nil && *c.errMessage != c.dg.errMsg() {
+				t.Errorf("expected %s to have error message %q, but it was %q", c.dg, *c.errMessage, c.dg.errMsg())
+			}
+		})
 	}
 }
 

@@ -7,86 +7,104 @@ package trivialt
 import "testing"
 
 func TestIsUnexpectedDatagram(t *testing.T) {
-	cases := map[string]struct {
-		err error
+	cases := []struct {
+		name string
+		err  error
 
 		expected bool
 	}{
-		"true": {
+		{
+			name:     "true",
 			err:      &errUnexpectedDatagram{},
 			expected: true,
 		},
-		"true, wrapped": {
+		{
+			name:     "true, wrapped",
 			err:      wrapError(&errUnexpectedDatagram{}, "testing"),
 			expected: true,
 		},
-		"false": {
+		{
+			name:     "false",
 			err:      errBlockSequence,
 			expected: false,
 		},
 	}
 
-	for label, c := range cases {
-		result := IsUnexpectedDatagram(c.err)
-		if result != c.expected {
-			t.Errorf("%s: Expected to IsUnexpectedDatagram %t, but it wasn't", label, c.expected)
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result := IsUnexpectedDatagram(c.err)
+			if result != c.expected {
+				t.Errorf("expected to IsUnexpectedDatagram %t, but it wasn't", c.expected)
+			}
+		})
 	}
 }
 
 func TestIsRemoteError(t *testing.T) {
-	cases := map[string]struct {
-		err error
+	cases := []struct {
+		name string
+		err  error
 
 		expected bool
 	}{
-		"true": {
+		{
+			name:     "true",
 			err:      &errRemoteError{},
 			expected: true,
 		},
-		"true, wrapped": {
+		{
+			name:     "true, wrapped",
 			err:      wrapError(&errRemoteError{}, "testing"),
 			expected: true,
 		},
-		"false": {
+		{
+			name:     "false",
 			err:      errBlockSequence,
 			expected: false,
 		},
 	}
 
-	for label, c := range cases {
-		result := IsRemoteError(c.err)
-		if result != c.expected {
-			t.Errorf("%s: Expected to IsUnexpectedDatagram %t, but it wasn't", label, c.expected)
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result := IsRemoteError(c.err)
+			if result != c.expected {
+				t.Errorf("expected to IsUnexpectedDatagram %t, but it wasn't", c.expected)
+			}
+		})
 	}
 }
 
 func TestIsOptionParsingError(t *testing.T) {
-	cases := map[string]struct {
-		err error
+	cases := []struct {
+		name string
+		err  error
 
 		expected bool
 	}{
-		"true": {
+		{
+			name:     "true",
 			err:      &errParsingOption{},
 			expected: true,
 		},
-		"true, wrapped": {
+		{
+			name:     "true, wrapped",
 			err:      wrapError(&errParsingOption{}, "testing"),
 			expected: true,
 		},
-		"false": {
+		{
+			name:     "false",
 			err:      errBlockSequence,
 			expected: false,
 		},
 	}
 
-	for label, c := range cases {
-		result := IsOptionParsingError(c.err)
-		if result != c.expected {
-			t.Errorf("%s: Expected to IsUnexpectedDatagram %t, but it wasn't", label, c.expected)
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result := IsOptionParsingError(c.err)
+			if result != c.expected {
+				t.Errorf("expected to IsUnexpectedDatagram %t, but it wasn't", c.expected)
+			}
+		})
 	}
 }
 
@@ -95,26 +113,32 @@ func TestErrorStrings(t *testing.T) {
 	dg.writeAck(68)
 
 	cases := []struct {
+		name     string
 		err      error
 		expected string
 	}{
 		{
+			name:     "unexpected datagram",
 			err:      &errUnexpectedDatagram{dg: dg.String()},
 			expected: `unexpected datagram: ACK[Block: 68]`,
 		},
 		{
+			name:     "remote error",
 			err:      &errRemoteError{dg: dg.String()},
 			expected: `remote error: ACK[Block: 68]`,
 		},
 		{
+			name:     "parse error",
 			err:      &errParsingOption{option: "timeout", value: "a"},
 			expected: `error parsing "a" for option "timeout"`,
 		},
 	}
 
 	for _, c := range cases {
-		if c.err.Error() != c.expected {
-			t.Errorf("Expected %q to be %q", c.err.Error(), c.expected)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			if c.err.Error() != c.expected {
+				t.Errorf("Expected %q to be %q", c.err.Error(), c.expected)
+			}
+		})
 	}
 }

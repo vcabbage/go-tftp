@@ -36,58 +36,63 @@ func (r *readRequestMock) TransferMode() TransferMode { return r.tmode }
 func TestFileServer_ServeTFTP(t *testing.T) {
 	text := getTestData(t, "text")
 
-	cases := map[string]struct {
-		name string
+	cases := []struct {
+		name    string
+		reqName string
 
 		expectedData      []byte
 		expectedSize      *int64
 		expectedErrorCode ErrorCode
 		expectedErrorMsg  string
 	}{
-		"file exists": {
-			name: "text",
+		{
+			name:    "file exists",
+			reqName: "text",
 
 			expectedData: text,
 			expectedSize: ptrInt64(int64(len(text))),
 		},
-		"file does not exist": {
-			name: "other",
+		{
+			name:    "file does not exist",
+			reqName: "other",
 
 			expectedErrorCode: ErrCodeFileNotFound,
 			expectedErrorMsg:  `File "other" does not exist`,
 		},
 	}
 
-	for label, c := range cases {
-		fs := FileServer("testdata")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fs := FileServer("testdata")
 
-		req := readRequestMock{name: c.name}
+			req := readRequestMock{name: c.reqName}
 
-		fs.ServeTFTP(&req)
+			fs.ServeTFTP(&req)
 
-		// Data
-		if !reflect.DeepEqual(c.expectedData, req.writer.Bytes()) {
-			t.Errorf("%s: Expected data to be %s, but it was %s", label, c.expectedData, req.writer.String())
-		}
-
-		// Size
-		if !reflect.DeepEqual(c.expectedSize, req.size) {
-			if c.expectedSize == nil || req.size == nil {
-				t.Errorf("%s: Expected size to be %v, but it was %v", label, c.expectedSize, req.size)
-			} else {
-				t.Errorf("%s: Expected size to be %v, but it was %v", label, *c.expectedSize, *req.size)
+			// Data
+			if !reflect.DeepEqual(c.expectedData, req.writer.Bytes()) {
+				t.Errorf("expected data to be %s, but it was %s", c.expectedData, req.writer.String())
 			}
-		}
 
-		// Error Code
-		if c.expectedErrorCode != req.errCode {
-			t.Errorf("%s: Expected error code to be %s, but it was %s", label, c.expectedErrorCode, req.errCode)
-		}
+			// Size
+			if !reflect.DeepEqual(c.expectedSize, req.size) {
+				if c.expectedSize == nil || req.size == nil {
+					t.Errorf("expected size to be %v, but it was %v", c.expectedSize, req.size)
+				} else {
+					t.Errorf("expected size to be %v, but it was %v", *c.expectedSize, *req.size)
+				}
+			}
 
-		// Error Message
-		if c.expectedErrorMsg != req.errMsg {
-			t.Errorf("%s: Expected error msg to be %q, but it was %q", label, c.expectedErrorMsg, req.errMsg)
-		}
+			// Error Code
+			if c.expectedErrorCode != req.errCode {
+				t.Errorf("expected error code to be %s, but it was %s", c.expectedErrorCode, req.errCode)
+			}
+
+			// Error Message
+			if c.expectedErrorMsg != req.errMsg {
+				t.Errorf("expected error msg to be %q, but it was %q", c.expectedErrorMsg, req.errMsg)
+			}
+		})
 	}
 }
 
@@ -119,23 +124,26 @@ func (r *writeRequestMock) TransferMode() TransferMode { return r.tmode }
 func TestFileServer_ReceiveTFTP(t *testing.T) {
 	text := getTestData(t, "text")
 
-	cases := map[string]struct {
-		name string
-		data []byte
+	cases := []struct {
+		name    string
+		reqName string
+		data    []byte
 
 		expectedFilename  string
 		expectedData      []byte
 		expectedErrorCode ErrorCode
 		expectedErrorMsg  string
 	}{
-		"success": {
-			name: "text",
-			data: text,
+		{
+			name:    "success",
+			reqName: "text",
+			data:    text,
 
 			expectedData: text,
 		},
-		"fail": {
-			name: "",
+		{
+			name:    "fail",
+			reqName: "",
 
 			expectedData:      []byte{},
 			expectedErrorCode: ErrCodeAccessViolation,
@@ -143,32 +151,34 @@ func TestFileServer_ReceiveTFTP(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		dir, err := ioutil.TempDir("", "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		fs := FileServer(dir)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir, err := ioutil.TempDir("", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			fs := FileServer(dir)
 
-		req := writeRequestMock{name: c.name}
-		req.reader.Write(c.data)
+			req := writeRequestMock{name: c.reqName}
+			req.reader.Write(c.data)
 
-		fs.ReceiveTFTP(&req)
+			fs.ReceiveTFTP(&req)
 
-		// Data
-		data, _ := ioutil.ReadFile(filepath.Join(dir, c.name))
-		if !reflect.DeepEqual(c.expectedData, data) {
-			t.Errorf("%s: Expected data to be %s, but it was %s", label, c.expectedData, data)
-		}
+			// Data
+			data, _ := ioutil.ReadFile(filepath.Join(dir, c.reqName))
+			if !reflect.DeepEqual(c.expectedData, data) {
+				t.Errorf("expected data to be %s, but it was %s", c.expectedData, data)
+			}
 
-		// Error Code
-		if c.expectedErrorCode != req.errCode {
-			t.Errorf("%s: Expected error code to be %s, but it was %s", label, c.expectedErrorCode, req.errCode)
-		}
+			// Error Code
+			if c.expectedErrorCode != req.errCode {
+				t.Errorf("expected error code to be %s, but it was %s", c.expectedErrorCode, req.errCode)
+			}
 
-		// Error Message
-		if c.expectedErrorMsg != req.errMsg {
-			t.Errorf("%s: Expected error msg to be %q, but it was %q", label, c.expectedErrorMsg, req.errMsg)
-		}
+			// Error Message
+			if c.expectedErrorMsg != req.errMsg {
+				t.Errorf("expected error msg to be %q, but it was %q", c.expectedErrorMsg, req.errMsg)
+			}
+		})
 	}
 }

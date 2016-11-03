@@ -6,6 +6,7 @@ package trivialt
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"reflect"
 	"regexp"
@@ -21,7 +22,8 @@ func TestNewConn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cases := map[string]struct {
+	cases := []struct {
+		name string
 		net  string
 		mode TransferMode
 		addr *net.UDPAddr
@@ -30,7 +32,8 @@ func TestNewConn(t *testing.T) {
 		expectedMode  TransferMode
 		expectedError string
 	}{
-		"success": {
+		{
+			name: "success",
 			net:  "udp",
 			mode: ModeOctet,
 			addr: addr,
@@ -38,7 +41,8 @@ func TestNewConn(t *testing.T) {
 			expectedAddr: addr,
 			expectedMode: ModeOctet,
 		},
-		"error": {
+		{
+			name: "error",
 			net:  "udp7",
 			mode: ModeOctet,
 			addr: addr,
@@ -47,44 +51,46 @@ func TestNewConn(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		conn, err := newConn(c.net, c.mode, c.addr)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			conn, err := newConn(c.net, c.mode, c.addr)
 
-		// Errorf
-		if err != nil && ErrorCause(err).Error() != c.expectedError {
-			t.Errorf("%s: expected error %q, got %q", label, c.expectedError, ErrorCause(err).Error())
-		}
-		if err != nil {
-			continue
-		}
+			// Errorf
+			if err != nil && ErrorCause(err).Error() != c.expectedError {
+				t.Errorf("expected error %q, got %q", c.expectedError, ErrorCause(err).Error())
+			}
+			if err != nil {
+				return
+			}
 
-		// Addr
-		if c.expectedAddr != conn.remoteAddr {
-			t.Errorf("%s: Expected addr %#v, but it was %#v", label, c.expectedAddr, conn.remoteAddr)
-		}
+			// Addr
+			if c.expectedAddr != conn.remoteAddr {
+				t.Errorf("expected addr %#v, but it was %#v", c.expectedAddr, conn.remoteAddr)
+			}
 
-		// Mode
-		if c.expectedMode != conn.mode {
-			t.Errorf("%s: Expected mode %q, but it was %q", label, c.expectedMode, conn.mode)
-		}
-		conn.Close()
+			// Mode
+			if c.expectedMode != conn.mode {
+				t.Errorf("expected mode %q, but it was %q", c.expectedMode, conn.mode)
+			}
+			conn.Close()
 
-		// Defaults
-		if conn.blksize != 512 {
-			t.Errorf("%s: Expected blocksize to be default 512, but it was %d", label, conn.blksize)
-		}
-		if conn.timeout != time.Second {
-			t.Errorf("%s: Expected timeout to be default 1s, but it was %s", label, conn.timeout)
-		}
-		if conn.windowsize != 1 {
-			t.Errorf("%s: Expected window to be default 1, but it was %d", label, conn.windowsize)
-		}
-		if conn.retransmit != 10 {
-			t.Errorf("%s: Expected retransmit to be default 1, but it was %d", label, conn.retransmit)
-		}
-		if len(conn.rx.buf) != 516 {
-			t.Errorf("%s: Expected buf len to be default 516, but it was %d", label, len(conn.buf))
-		}
+			// Defaults
+			if conn.blksize != 512 {
+				t.Errorf("expected blocksize to be default 512, but it was %d", conn.blksize)
+			}
+			if conn.timeout != time.Second {
+				t.Errorf("expected timeout to be default 1s, but it was %s", conn.timeout)
+			}
+			if conn.windowsize != 1 {
+				t.Errorf("expected window to be default 1, but it was %d", conn.windowsize)
+			}
+			if conn.retransmit != 10 {
+				t.Errorf("expected retransmit to be default 1, but it was %d", conn.retransmit)
+			}
+			if len(conn.rx.buf) != 516 {
+				t.Errorf("expected buf len to be default 516, but it was %d", len(conn.buf))
+			}
+		})
 	}
 }
 
@@ -94,11 +100,11 @@ func testWriteConn(t *testing.T, conn *net.UDPConn, addr *net.UDPAddr, dg datagr
 	return err
 }
 
-func testConnFunc(label string, conn *net.UDPConn, addr *net.UDPAddr, connFunc func(string, *net.UDPConn, *net.UDPAddr) error) chan error {
+func testConnFunc(conn *net.UDPConn, addr *net.UDPAddr, connFunc func(*net.UDPConn, *net.UDPAddr) error) chan error {
 	errChan := make(chan error)
 	if connFunc != nil {
 		go func() {
-			errChan <- connFunc(label, conn, addr)
+			errChan <- connFunc(conn, addr)
 		}()
 	} else {
 		close(errChan)
@@ -109,22 +115,24 @@ func testConnFunc(label string, conn *net.UDPConn, addr *net.UDPAddr, connFunc f
 func TestConn_getAck(t *testing.T) {
 	tDG := datagram{}
 
-	cases := map[string]struct {
+	cases := []struct {
+		name     string
 		timeout  time.Duration
 		block    uint16
 		window   uint16
-		connFunc func(string, *net.UDPConn, *net.UDPAddr) error
+		connFunc func(*net.UDPConn, *net.UDPAddr) error
 
 		expectedBlock   uint16
 		expectedWindow  uint16
 		expectedRingBuf int
 		expectedError   string
 	}{
-		"success": {
+		{
+			name:    "success",
 			timeout: time.Second * 1,
 			block:   14,
 			window:  5,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeAck(14)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -133,16 +141,18 @@ func TestConn_getAck(t *testing.T) {
 			expectedWindow: 5,
 			expectedError:  "^$",
 		},
-		"timeout": {
+		{
+			name:    "timeout",
 			timeout: time.Millisecond,
 
 			expectedError: "read .*: i/o timeout",
 		},
-		"wrong client": {
+		{
+			name:    "wrong client",
 			timeout: time.Millisecond * 10,
 			block:   67,
 			window:  4,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				dg := datagram{buf: make([]byte, 516)}
 
 				// Create and send a packet from a different port
@@ -186,11 +196,12 @@ func TestConn_getAck(t *testing.T) {
 			expectedWindow: 4,
 			expectedError:  "^$",
 		},
-		"invalid datagram": {
+		{
+			name:    "invalid datagram",
 			timeout: time.Second * 1,
 			block:   14,
 			window:  5,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeError(13, "error")
 				tDG.offset = 5
 				return testWriteConn(t, conn, sAddr, tDG)
@@ -200,11 +211,12 @@ func TestConn_getAck(t *testing.T) {
 			expectedWindow: 5,
 			expectedError:  `ACK validation`,
 		},
-		"error datagram": {
+		{
+			name:    "error datagram",
 			timeout: time.Second * 1,
 			block:   14,
 			window:  5,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeError(ErrCodeDiskFull, "error")
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -213,11 +225,12 @@ func TestConn_getAck(t *testing.T) {
 			expectedWindow: 5,
 			expectedError:  "error receiving ACK",
 		},
-		"other datagram": {
+		{
+			name:    "other datagram",
 			timeout: time.Second * 1,
 			block:   14,
 			window:  5,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeWriteReq("file", ModeNetASCII, nil)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -226,11 +239,12 @@ func TestConn_getAck(t *testing.T) {
 			expectedWindow: 5,
 			expectedError:  "error receiving ACK.*unexpected datagram",
 		},
-		"incorrect block": {
+		{
+			name:    "incorrect block",
 			timeout: time.Second * 1,
 			block:   18,
 			window:  5,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeAck(14)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -240,11 +254,12 @@ func TestConn_getAck(t *testing.T) {
 			expectedRingBuf: -4,
 			expectedError:   "^$",
 		},
-		"incorrect block, ahead": {
+		{
+			name:    "incorrect block, ahead",
 			timeout: time.Second * 1,
 			block:   18,
 			window:  5,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeAck(20)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -255,8 +270,8 @@ func TestConn_getAck(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		func() {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, sAddr, cNetConn, closer := testConns(t)
 			defer closer()
 			tConn.timeout = c.timeout
@@ -265,7 +280,7 @@ func TestConn_getAck(t *testing.T) {
 			tConn.rx.buf = make([]byte, 516)
 			tConn.txBuf = newRingBuffer(100, 100)
 
-			errChan := testConnFunc(label, cNetConn, sAddr, c.connFunc)
+			errChan := testConnFunc(cNetConn, sAddr, c.connFunc)
 			err := tConn.getAck()
 			if err := <-errChan; err != nil {
 				t.Fatal(err)
@@ -274,7 +289,7 @@ func TestConn_getAck(t *testing.T) {
 			// Error
 			if err != nil {
 				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
 				}
 			}
 			if err != nil {
@@ -283,28 +298,29 @@ func TestConn_getAck(t *testing.T) {
 
 			// Block number
 			if tConn.block != c.expectedBlock {
-				t.Errorf("%s: Expected block %d, got %d", label, c.expectedBlock, tConn.block)
+				t.Errorf("expected block %d, got %d", c.expectedBlock, tConn.block)
 			}
 
 			// Window number
 			if tConn.window != c.expectedWindow {
-				t.Errorf("%s: Expected window %d, got %d", label, c.expectedWindow, tConn.window)
+				t.Errorf("expected window %d, got %d", c.expectedWindow, tConn.window)
 			}
 
 			// ringBuf
 			if tConn.txBuf.current != c.expectedRingBuf {
-				t.Errorf("%s: Expected ringBuf current %d, got %d", label, c.expectedRingBuf, tConn.txBuf.current)
+				t.Errorf("expected ringBuf current %d, got %d", c.expectedRingBuf, tConn.txBuf.current)
 			}
-		}()
+		})
 	}
 }
 
 func TestConn_sendWriteRequest(t *testing.T) {
 	tDG := datagram{}
 
-	cases := map[string]struct {
+	cases := []struct {
+		name     string
 		timeout  time.Duration
-		connFunc func(string, *net.UDPConn, *net.UDPAddr) error
+		connFunc func(*net.UDPConn, *net.UDPAddr) error
 
 		expectedBlksize    uint16
 		expectedTimeout    time.Duration
@@ -313,9 +329,10 @@ func TestConn_sendWriteRequest(t *testing.T) {
 		expectedBufLen     int
 		expectedError      string
 	}{
-		"ACK": {
+		{
+			name:    "ACK",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeAck(0)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -326,9 +343,10 @@ func TestConn_sendWriteRequest(t *testing.T) {
 			expectedBufLen:     512,
 			expectedError:      "^$",
 		},
-		"OACK, blksize 600": {
+		{
+			name:    "OACK, blksize 600",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optBlocksize: "600"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -339,9 +357,10 @@ func TestConn_sendWriteRequest(t *testing.T) {
 			expectedBufLen:     600,
 			expectedError:      "^$",
 		},
-		"OACK, timeout 2s": {
+		{
+			name:    "OACK, timeout 2s",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optTimeout: "2"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -352,9 +371,10 @@ func TestConn_sendWriteRequest(t *testing.T) {
 			expectedBufLen:     512,
 			expectedError:      "^$",
 		},
-		"OACK, window 10": {
+		{
+			name:    "OACK, window 10",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optWindowSize: "10"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -365,9 +385,10 @@ func TestConn_sendWriteRequest(t *testing.T) {
 			expectedBufLen:     512,
 			expectedError:      "^$",
 		},
-		"OACK, tsize 1024": {
+		{
+			name:    "OACK, tsize 1024",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optTransferSize: "1024"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -379,52 +400,57 @@ func TestConn_sendWriteRequest(t *testing.T) {
 			expectedTsize:      ptrInt64(1024),
 			expectedError:      "^$",
 		},
-		"ERROR": {
+		{
+			name:    "ERROR",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeError(ErrCodeFileNotFound, "error")
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 			expectedError: "^WRQ OACK response: remote error",
 		},
-		"OACK, invalid": {
+		{
+			name:    "OACK, invalid",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optTransferSize: "three"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 			expectedError: "^parsing OACK to WRQ",
 		},
-		"invalid datagram": {
+		{
+			name:    "invalid datagram",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeReadReq("file", "error", nil)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 			expectedError: "^sending WRQ: validating request response",
 		},
-		"other datagram": {
+		{
+			name:    "other datagram",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeReadReq("file", ModeNetASCII, nil)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 			expectedError: "^WRQ OACK response: unexpected datagram",
 		},
-		"no ack": {
+		{
+			name:    "no ack",
 			timeout: time.Millisecond * 50,
 
 			expectedError: "^sending WRQ.*i/o timeout$",
 		},
 	}
 
-	for label, c := range cases {
-		func() {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, sAddr, cNetConn, closer := testConns(t)
 			defer closer()
 			tConn.timeout = c.timeout
 
-			errChan := testConnFunc(label, cNetConn, sAddr, c.connFunc)
+			errChan := testConnFunc(cNetConn, sAddr, c.connFunc)
 			err := tConn.sendWriteRequest("file", options{})
 			if err := <-errChan; err != nil {
 				t.Fatal(err)
@@ -433,7 +459,7 @@ func TestConn_sendWriteRequest(t *testing.T) {
 			// Error
 			if err != nil {
 				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
 				}
 			}
 			if err != nil {
@@ -441,25 +467,25 @@ func TestConn_sendWriteRequest(t *testing.T) {
 			}
 
 			if tConn.blksize != c.expectedBlksize {
-				t.Errorf("%s: Expected blocksize to be %d, but it was %d", label, c.expectedBlksize, tConn.blksize)
+				t.Errorf("expected blocksize to be %d, but it was %d", c.expectedBlksize, tConn.blksize)
 			}
 			if tConn.timeout != c.expectedTimeout {
-				t.Errorf("%s: Expected timeout to be %s, but it was %s", label, c.expectedTimeout, tConn.timeout)
+				t.Errorf("expected timeout to be %s, but it was %s", c.expectedTimeout, tConn.timeout)
 			}
 			if tConn.windowsize != c.expectedWindowsize {
-				t.Errorf("%s: Expected window to be %d, but it was %d", label, c.expectedWindowsize, tConn.windowsize)
+				t.Errorf("expected window to be %d, but it was %d", c.expectedWindowsize, tConn.windowsize)
 			}
 			if tConn.tsize != c.expectedTsize {
 				if tConn.tsize == nil || c.expectedTsize == nil {
-					t.Errorf("%s: Expected tsize to be %d, but it was %d", label, c.expectedTsize, tConn.tsize)
+					t.Errorf("expected tsize to be %d, but it was %d", c.expectedTsize, tConn.tsize)
 				} else if *tConn.tsize != *c.expectedTsize {
-					t.Errorf("%s: Expected tsize to be %d, but it was %d", label, *c.expectedTsize, *tConn.tsize)
+					t.Errorf("expected tsize to be %d, but it was %d", *c.expectedTsize, *tConn.tsize)
 				}
 			}
 			if len(tConn.buf) != c.expectedBufLen {
-				t.Errorf("%s: Expected buf len to be %d, but it was %d", label, c.expectedBufLen, len(tConn.buf))
+				t.Errorf("expected buf len to be %d, but it was %d", c.expectedBufLen, len(tConn.buf))
 			}
-		}()
+		})
 	}
 }
 
@@ -468,10 +494,11 @@ func TestConn_sendReadRequest(t *testing.T) {
 
 	data := getTestData(t, "1MB-random")
 
-	cases := map[string]struct {
+	cases := []struct {
+		name     string
 		timeout  time.Duration
 		mode     TransferMode
-		connFunc func(string, *net.UDPConn, *net.UDPAddr) error
+		connFunc func(*net.UDPConn, *net.UDPAddr) error
 
 		expectedBuf        string
 		expectDone         bool
@@ -483,10 +510,11 @@ func TestConn_sendReadRequest(t *testing.T) {
 		expectedBufLen     int
 		expectedError      string
 	}{
-		"DATA, small": {
+		{
+			name:    "DATA, small",
 			timeout: time.Second,
 			mode:    ModeOctet,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeData(1, []byte("data"))
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -499,10 +527,11 @@ func TestConn_sendReadRequest(t *testing.T) {
 			expectedBufLen:     516,
 			expectedError:      "^$",
 		},
-		"DATA, 512": {
+		{
+			name:    "DATA, 512",
 			timeout: time.Second,
 			mode:    ModeOctet,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeData(1, data[:512])
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -514,10 +543,11 @@ func TestConn_sendReadRequest(t *testing.T) {
 			expectedBufLen:     516,
 			expectedError:      "^$",
 		},
-		"DATA, netascii": {
+		{
+			name:    "DATA, netascii",
 			timeout: time.Second,
 			mode:    ModeNetASCII,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeData(1, []byte("data\ndata"))
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -530,9 +560,10 @@ func TestConn_sendReadRequest(t *testing.T) {
 			expectedBufLen:     516,
 			expectedError:      "^$",
 		},
-		"OACK, blksize 2048": {
+		{
+			name:    "OACK, blksize 2048",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optBlocksize: "2048"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -543,9 +574,10 @@ func TestConn_sendReadRequest(t *testing.T) {
 			expectedBufLen:     2052,
 			expectedError:      "^$",
 		},
-		"OACK, timeout 2s": {
+		{
+			name:    "OACK, timeout 2s",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optTimeout: "2"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -556,9 +588,10 @@ func TestConn_sendReadRequest(t *testing.T) {
 			expectedBufLen:     516,
 			expectedError:      "^$",
 		},
-		"OACK, window 10": {
+		{
+			name:    "OACK, window 10",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optWindowSize: "10"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -569,9 +602,10 @@ func TestConn_sendReadRequest(t *testing.T) {
 			expectedBufLen:     516,
 			expectedError:      "^$",
 		},
-		"OACK, tsize 1024": {
+		{
+			name:    "OACK, tsize 1024",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optTransferSize: "1024"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -583,45 +617,49 @@ func TestConn_sendReadRequest(t *testing.T) {
 			expectedTsize:      ptrInt64(1024),
 			expectedError:      "^$",
 		},
-		"OACK, invalid": {
+		{
+			name:    "OACK, invalid",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeOptionAck(options{optTransferSize: "three"})
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 			expectedError: "^got OACK, read setup",
 		},
-		"invalid datagram": {
+		{
+			name:    "invalid datagram",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeReadReq("file", "error", nil)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 			expectedError: "^sending RRQ: validating request response",
 		},
-		"other datagram": {
+		{
+			name:    "other datagram",
 			timeout: time.Second,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeReadReq("file", ModeNetASCII, nil)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 			expectedError: "^RRQ OACK response: unexpected datagram",
 		},
-		"no ack": {
+		{
+			name:    "no ack",
 			timeout: time.Millisecond * 50,
 
 			expectedError: "^sending RRQ.*i/o timeout$",
 		},
 	}
 
-	for label, c := range cases {
-		func() {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, sAddr, cNetConn, closer := testConns(t)
 			defer closer()
 			tConn.timeout = c.timeout
 			tConn.mode = c.mode
 
-			errChan := testConnFunc(label, cNetConn, sAddr, c.connFunc)
+			errChan := testConnFunc(cNetConn, sAddr, c.connFunc)
 			err := tConn.sendReadRequest("file", options{})
 			if err := <-errChan; err != nil {
 				t.Fatal(err)
@@ -630,7 +668,7 @@ func TestConn_sendReadRequest(t *testing.T) {
 			// Error
 			if err != nil {
 				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
 				}
 			}
 			if err != nil {
@@ -643,31 +681,31 @@ func TestConn_sendReadRequest(t *testing.T) {
 			}
 
 			if buf := tConn.rxBuf.String(); buf != c.expectedBuf {
-				t.Errorf("%s: Expected buf to contain %q, but it was %q", label, c.expectedBuf, buf)
+				t.Errorf("expected buf to contain %q, but it was %q", c.expectedBuf, buf)
 			}
 			if tConn.done != c.expectDone {
-				t.Errorf("%s: Expected done %t, but it wasn't", label, c.expectDone)
+				t.Errorf("expected done %t, but it wasn't", c.expectDone)
 			}
 			if tConn.blksize != c.expectedBlksize {
-				t.Errorf("%s: Expected blocksize to be %d, but it was %d", label, c.expectedBlksize, tConn.blksize)
+				t.Errorf("expected blocksize to be %d, but it was %d", c.expectedBlksize, tConn.blksize)
 			}
 			if tConn.timeout != c.expectedTimeout {
-				t.Errorf("%s: Expected timeout to be %s, but it was %s", label, c.expectedTimeout, tConn.timeout)
+				t.Errorf("expected timeout to be %s, but it was %s", c.expectedTimeout, tConn.timeout)
 			}
 			if tConn.windowsize != c.expectedWindowsize {
-				t.Errorf("%s: Expected window to be %d, but it was %d", label, c.expectedWindowsize, tConn.windowsize)
+				t.Errorf("expected window to be %d, but it was %d", c.expectedWindowsize, tConn.windowsize)
 			}
 			if tConn.tsize != c.expectedTsize {
 				if tConn.tsize == nil || c.expectedTsize == nil {
-					t.Errorf("%s: Expected tsize to be %d, but it was %d", label, c.expectedTsize, tConn.tsize)
+					t.Errorf("expected tsize to be %d, but it was %d", c.expectedTsize, tConn.tsize)
 				} else if *tConn.tsize != *c.expectedTsize {
-					t.Errorf("%s: Expected tsize to be %d, but it was %d", label, *c.expectedTsize, *tConn.tsize)
+					t.Errorf("expected tsize to be %d, but it was %d", *c.expectedTsize, *tConn.tsize)
 				}
 			}
 			if len(tConn.rx.buf) != c.expectedBufLen {
-				t.Errorf("%s: Expected buf len to be %d, but it was %d", label, c.expectedBufLen, len(tConn.rx.buf))
+				t.Errorf("expected buf len to be %d, but it was %d", c.expectedBufLen, len(tConn.rx.buf))
 			}
-		}()
+		})
 	}
 }
 
@@ -676,20 +714,22 @@ func TestConn_readData(t *testing.T) {
 
 	data := getTestData(t, "1MB-random")
 
-	cases := map[string]struct {
+	cases := []struct {
+		name     string
 		timeout  time.Duration
 		window   uint16
-		connFunc func(string, *net.UDPConn, *net.UDPAddr) error
+		connFunc func(*net.UDPConn, *net.UDPAddr) error
 
 		expectedBlock  uint16
 		expectedData   []byte
 		expectedWindow uint16
 		expectedError  string
 	}{
-		"success": {
+		{
+			name:    "success",
 			timeout: time.Second,
 			window:  1,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeData(13, data[:512])
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
@@ -699,10 +739,11 @@ func TestConn_readData(t *testing.T) {
 			expectedData:   data[:512],
 			expectedError:  "^$",
 		},
-		"1 retry": {
+		{
+			name:    "1 retry",
 			timeout: time.Millisecond * 100,
 			window:  56,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				time.Sleep(110 * time.Millisecond)
 				tDG.writeData(13, data[:512])
 				return testWriteConn(t, conn, sAddr, tDG)
@@ -713,9 +754,10 @@ func TestConn_readData(t *testing.T) {
 			expectedData:   data[:512],
 			expectedError:  "^$",
 		},
-		"invalid": {
+		{
+			name:    "invalid",
 			timeout: time.Millisecond * 100,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeData(13, data[:512])
 				tDG.offset = 3
 				return testWriteConn(t, conn, sAddr, tDG)
@@ -723,39 +765,42 @@ func TestConn_readData(t *testing.T) {
 
 			expectedError: "^validating read data: Corrupt block number$",
 		},
-		"error datagram": {
+		{
+			name:    "error datagram",
 			timeout: time.Millisecond * 100,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeError(ErrCodeDiskFull, "error")
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 
 			expectedError: "^reading data: remote error:",
 		},
-		"other datagram": {
+		{
+			name:    "other datagram",
 			timeout: time.Millisecond * 100,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				tDG.writeAck(12)
 				return testWriteConn(t, conn, sAddr, tDG)
 			},
 
 			expectedError: "^read data response: unexpected datagram:",
 		},
-		"no data": {
+		{
+			name:    "no data",
 			timeout: time.Millisecond * 10,
 
 			expectedError: "^reading data.*i/o timeout$",
 		},
 	}
 
-	for label, c := range cases {
-		func() {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, sAddr, cNetConn, closer := testConns(t)
 			defer closer()
 			tConn.timeout = c.timeout
 			tConn.window = c.window
 
-			errChan := testConnFunc(label, cNetConn, sAddr, c.connFunc)
+			errChan := testConnFunc(cNetConn, sAddr, c.connFunc)
 			err := tConn.readData()
 			if err := <-errChan; err != nil {
 				t.Fatal(err)
@@ -764,26 +809,26 @@ func TestConn_readData(t *testing.T) {
 			// Error
 			if err != nil {
 				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
 				}
 				return
 			}
 
 			// Data
 			if string(tConn.rx.data()) != string(c.expectedData) {
-				// t.Errorf("%s: Expected data %q, got %q", label, string(c.expectedData), string(data))
+				t.Errorf("expected data %q, got %q", string(c.expectedData), string(data))
 			}
 
 			// Block number
 			if tConn.rx.block() != c.expectedBlock {
-				t.Errorf("%s: Expected block %d, got %d", label, c.expectedBlock, tConn.block)
+				t.Errorf("expected block %d, got %d", c.expectedBlock, tConn.block)
 			}
 
 			// Window number
 			if tConn.window != c.expectedWindow {
-				t.Errorf("%s: Expected window %d, got %d", label, c.expectedWindow, tConn.window)
+				t.Errorf("expected window %d, got %d", c.expectedWindow, tConn.window)
 			}
-		}()
+		})
 	}
 }
 
@@ -792,21 +837,23 @@ func TestConn_ackData(t *testing.T) {
 
 	data := getTestData(t, "1MB-random")
 
-	cases := map[string]struct {
+	cases := []struct {
+		name       string
 		timeout    time.Duration
 		rx         datagram
 		block      uint16
 		window     uint16
 		windowsize uint16
 		catchup    bool
-		connFunc   func(string, *net.UDPConn, *net.UDPAddr) error
+		connFunc   func(*net.UDPConn, *net.UDPAddr) error
 
 		expectCatchup  bool
 		expectedBlock  uint16
 		expectedWindow uint16
 		expectedError  string
 	}{
-		"success, reached window": {
+		{
+			name:       "success, reached window",
 			timeout:    time.Second,
 			block:      12,
 			windowsize: 1,
@@ -821,7 +868,8 @@ func TestConn_ackData(t *testing.T) {
 			expectedWindow: 0,
 			expectedError:  "^$",
 		},
-		"success, reset catchup": {
+		{
+			name:       "success, reset catchup",
 			timeout:    time.Second,
 			block:      12,
 			windowsize: 4,
@@ -837,7 +885,8 @@ func TestConn_ackData(t *testing.T) {
 			expectedWindow: 1,
 			expectedError:  "^$",
 		},
-		"repeat block": {
+		{
+			name:       "repeat block",
 			timeout:    time.Second,
 			block:      12,
 			windowsize: 2,
@@ -852,7 +901,8 @@ func TestConn_ackData(t *testing.T) {
 			expectedWindow: 1,
 			expectedError:  errBlockSequence.Error(),
 		},
-		"future block, no catchup": {
+		{
+			name:       "future block, no catchup",
 			timeout:    time.Second,
 			block:      12,
 			windowsize: 2,
@@ -862,7 +912,7 @@ func TestConn_ackData(t *testing.T) {
 				dg.writeData(14, data[:512])
 				return dg
 			}(),
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				conn.SetReadDeadline(time.Now().Add(testConnTimeout))
 				_, _, err := conn.ReadFrom(tDG.buf)
 				if err != nil {
@@ -881,7 +931,8 @@ func TestConn_ackData(t *testing.T) {
 			expectedWindow: 0,
 			expectedError:  errBlockSequence.Error(),
 		},
-		"future block, rollover": {
+		{
+			name:       "future block, rollover",
 			timeout:    time.Second,
 			block:      65534,
 			windowsize: 4,
@@ -891,7 +942,7 @@ func TestConn_ackData(t *testing.T) {
 				dg.writeData(0, data[:512])
 				return dg
 			}(),
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				conn.SetReadDeadline(time.Now().Add(testConnTimeout))
 				_, _, err := conn.ReadFrom(tDG.buf)
 				if err != nil {
@@ -910,7 +961,8 @@ func TestConn_ackData(t *testing.T) {
 			expectedWindow: 0,
 			expectedError:  errBlockSequence.Error(),
 		},
-		"future block, catchup": {
+		{
+			name:       "future block, catchup",
 			timeout:    time.Second,
 			block:      12,
 			windowsize: 32,
@@ -927,7 +979,8 @@ func TestConn_ackData(t *testing.T) {
 			expectedWindow: 1,
 			expectedError:  errBlockSequence.Error(),
 		},
-		"past block": {
+		{
+			name:       "past block",
 			timeout:    time.Second,
 			block:      12,
 			windowsize: 1,
@@ -942,7 +995,8 @@ func TestConn_ackData(t *testing.T) {
 			expectedWindow: 1,
 			expectedError:  errBlockSequence.Error(),
 		},
-		"success, below window": {
+		{
+			name:       "success, below window",
 			timeout:    time.Second,
 			block:      12,
 			window:     1,
@@ -959,8 +1013,8 @@ func TestConn_ackData(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		func() {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, sAddr, cNetConn, closer := testConns(t)
 			defer closer()
 			tConn.rx = c.rx
@@ -974,35 +1028,38 @@ func TestConn_ackData(t *testing.T) {
 			// Error
 			if err != nil {
 				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
 				}
 			}
 
 			if c.connFunc != nil {
-				c.connFunc(label, cNetConn, sAddr)
+				if err := c.connFunc(cNetConn, sAddr); err != nil {
+					t.Fatal(err)
+				}
 			}
 
 			// Block number
 			if tConn.block != c.expectedBlock {
-				t.Errorf("%s: Expected block %d, got %d", label, c.expectedBlock, tConn.block)
+				t.Errorf("expected block %d, got %d", c.expectedBlock, tConn.block)
 			}
 
 			// Window number
 			if tConn.window != c.expectedWindow {
-				t.Errorf("%s: Expected window %d, got %d", label, c.expectedWindow, tConn.window)
+				t.Errorf("expected window %d, got %d", c.expectedWindow, tConn.window)
 			}
 			// Catchup
 			if tConn.catchup != c.expectCatchup {
-				t.Errorf("%s: Expected catchup %t, but it wasn't", label, c.expectCatchup)
+				t.Errorf("expected catchup %t, but it wasn't", c.expectCatchup)
 			}
-		}()
+		})
 	}
 }
 
 func TestConn_parseOptions(t *testing.T) {
 	dg := datagram{}
 
-	cases := map[string]struct {
+	cases := []struct {
+		name     string
 		rx       func() datagram
 		tsize    *int64
 		isSender bool
@@ -1015,7 +1072,8 @@ func TestConn_parseOptions(t *testing.T) {
 		expectedTsize       *int64
 		expectedError       string
 	}{
-		"blocksize, valid": {
+		{
+			name: "blocksize, valid",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optBlocksize: "234"})
 				return dg
@@ -1026,7 +1084,8 @@ func TestConn_parseOptions(t *testing.T) {
 			expectedBlksize:     234,
 			expectedError:       "^$",
 		},
-		"blocksize, invalid": {
+		{
+			name: "blocksize, invalid",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optBlocksize: "a"})
 				return dg
@@ -1036,7 +1095,8 @@ func TestConn_parseOptions(t *testing.T) {
 			expectedBlksize:     0,
 			expectedError:       `error parsing .* for option "blksize"`,
 		},
-		"timeout, valid": {
+		{
+			name: "timeout, valid",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optTimeout: "3"})
 				return dg
@@ -1047,7 +1107,8 @@ func TestConn_parseOptions(t *testing.T) {
 			expectedTimeout:     3 * time.Second,
 			expectedError:       `^$`,
 		},
-		"timeout, invalid": {
+		{
+			name: "timeout, invalid",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optTimeout: "three"})
 				return dg
@@ -1057,7 +1118,8 @@ func TestConn_parseOptions(t *testing.T) {
 			expectedTimeout:     0,
 			expectedError:       `error parsing .* for option "timeout"`,
 		},
-		"tsize, valid, sending side": {
+		{
+			name: "tsize, valid, sending side",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optTransferSize: "0"})
 				return dg
@@ -1070,7 +1132,8 @@ func TestConn_parseOptions(t *testing.T) {
 			expectOptionsParsed: true,
 			expectedError:       `^$`,
 		},
-		"tsize, valid, receive side": {
+		{
+			name: "tsize, valid, receive side",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optTransferSize: "42"})
 				return dg
@@ -1081,7 +1144,8 @@ func TestConn_parseOptions(t *testing.T) {
 			expectedTsize:       ptrInt64(42),
 			expectedError:       `^$`,
 		},
-		"tsize, invalid": {
+		{
+			name: "tsize, invalid",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optTransferSize: "large"})
 				return dg
@@ -1089,7 +1153,8 @@ func TestConn_parseOptions(t *testing.T) {
 
 			expectedError: `^error parsing .* for option "tsize"$`,
 		},
-		"windowsize, valid": {
+		{
+			name: "windowsize, valid",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optWindowSize: "32"})
 				return dg
@@ -1100,7 +1165,8 @@ func TestConn_parseOptions(t *testing.T) {
 			expectedWindowsize:  32,
 			expectedError:       `^$`,
 		},
-		"windowsize, invalid": {
+		{
+			name: "windowsize, invalid",
 			rx: func() datagram {
 				dg.writeOptionAck(options{optWindowSize: "x"})
 				return dg
@@ -1108,7 +1174,8 @@ func TestConn_parseOptions(t *testing.T) {
 
 			expectedError: `^error parsing .* for option "windowsize"$`,
 		},
-		"all options, sending side": {
+		{
+			name: "all options, sending side",
 			rx: func() datagram {
 				dg.writeOptionAck(options{
 					optBlocksize:    "1024",
@@ -1133,7 +1200,8 @@ func TestConn_parseOptions(t *testing.T) {
 			expectedTsize:       ptrInt64(1234567890),
 			expectedWindowsize:  16,
 		},
-		"all options, receive side": {
+		{
+			name: "all options, receive side",
 			rx: func() datagram {
 				dg.writeOptionAck(options{
 					optBlocksize:    "1024",
@@ -1157,46 +1225,48 @@ func TestConn_parseOptions(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		tConn := conn{rx: c.rx()}
-		tConn.tsize = c.tsize
-		tConn.isSender = c.isSender
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tConn := conn{rx: c.rx()}
+			tConn.tsize = c.tsize
+			tConn.isSender = c.isSender
 
-		opts, err := tConn.parseOptions()
+			opts, err := tConn.parseOptions()
 
-		// Error
-		if err != nil {
-			if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-				t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+			// Error
+			if err != nil {
+				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
+				}
 			}
-		}
 
-		// Options
-		if !reflect.DeepEqual(c.expectedOptions, opts) {
-			t.Errorf("%s: Expected options %q, got %q", label, c.expectedOptions, opts)
-		}
-
-		// OptionsParsed
-		if c.expectOptionsParsed != tConn.optionsParsed {
-			t.Errorf("%s: Expected optionsParsed %t, but it wasn't", label, c.expectOptionsParsed)
-		}
-
-		if tConn.blksize != c.expectedBlksize {
-			t.Errorf("%s: Expected blocksize to be %d, but it was %d", label, c.expectedBlksize, tConn.blksize)
-		}
-		if tConn.timeout != c.expectedTimeout {
-			t.Errorf("%s: Expected timeout to be %s, but it was %s", label, c.expectedTimeout, tConn.timeout)
-		}
-		if tConn.windowsize != c.expectedWindowsize {
-			t.Errorf("%s: Expected window to be %d, but it was %d", label, c.expectedWindowsize, tConn.windowsize)
-		}
-		if tConn.tsize != c.expectedTsize {
-			if tConn.tsize == nil || c.expectedTsize == nil {
-				t.Errorf("%s: Expected tsize to be *%d, but it was *%d", label, c.expectedTsize, tConn.tsize)
-			} else if *tConn.tsize != *c.expectedTsize {
-				t.Errorf("%s: Expected tsize to be %d, but it was %d", label, *c.expectedTsize, *tConn.tsize)
+			// Options
+			if !reflect.DeepEqual(c.expectedOptions, opts) {
+				t.Errorf("expected options %q, got %q", c.expectedOptions, opts)
 			}
-		}
+
+			// OptionsParsed
+			if c.expectOptionsParsed != tConn.optionsParsed {
+				t.Errorf("expected optionsParsed %t, but it wasn't", c.expectOptionsParsed)
+			}
+
+			if tConn.blksize != c.expectedBlksize {
+				t.Errorf("expected blocksize to be %d, but it was %d", c.expectedBlksize, tConn.blksize)
+			}
+			if tConn.timeout != c.expectedTimeout {
+				t.Errorf("expected timeout to be %s, but it was %s", c.expectedTimeout, tConn.timeout)
+			}
+			if tConn.windowsize != c.expectedWindowsize {
+				t.Errorf("expected window to be %d, but it was %d", c.expectedWindowsize, tConn.windowsize)
+			}
+			if tConn.tsize != c.expectedTsize {
+				if tConn.tsize == nil || c.expectedTsize == nil {
+					t.Errorf("expected tsize to be *%d, but it was *%d", c.expectedTsize, tConn.tsize)
+				} else if *tConn.tsize != *c.expectedTsize {
+					t.Errorf("expected tsize to be %d, but it was %d", *c.expectedTsize, *tConn.tsize)
+				}
+			}
+		})
 	}
 }
 
@@ -1205,7 +1275,8 @@ func TestConn_write(t *testing.T) {
 
 	data := getTestData(t, "1MB-random")
 
-	cases := map[string]struct {
+	cases := []struct {
+		name          string
 		bytes         []byte
 		optionsParsed bool
 		blksize       uint16
@@ -1213,24 +1284,15 @@ func TestConn_write(t *testing.T) {
 		windowsize    uint16
 		rx            func() datagram
 		timeout       time.Duration
-		connFunc      func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error
+		connFunc      func(conn *net.UDPConn, sAddr *net.UDPAddr) error
 		connErr       error
 
 		expectedCount  int
 		expectedError  string
 		expectedWindow uint64
 	}{
-		"writeSetup fails": {
-			timeout:       time.Millisecond,
-			optionsParsed: false,
-			rx: func() datagram {
-				dg.writeOptionAck(options{optBlocksize: "234"})
-				return dg
-			},
-
-			expectedError: "parsing options before write: write setup: network read failed:",
-		},
-		"success, buf < blksize": {
+		{
+			name:          "success, buf < blksize",
 			timeout:       time.Millisecond,
 			bytes:         data[:300],
 			blksize:       512,
@@ -1239,45 +1301,48 @@ func TestConn_write(t *testing.T) {
 			expectedCount: 300,
 			expectedError: "^$",
 		},
-		"success, buf > blksize, window 1": {
+		{
+			name:          "success, buf > blksize, window 1",
 			timeout:       time.Millisecond * 100,
 			bytes:         data[:1024],
 			blksize:       512,
 			windowsize:    1,
 			optionsParsed: true,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				dg.writeAck(1)
 				conn.SetWriteDeadline(time.Now().Add(testConnTimeout))
-				if _, err := conn.WriteTo(dg.buf, sAddr); err != nil {
+				if _, err := conn.WriteTo(dg.bytes(), sAddr); err != nil {
 					return err
 				}
 
 				dg.writeAck(2)
 				conn.SetWriteDeadline(time.Now().Add(testConnTimeout))
-				_, err := conn.WriteTo(dg.buf, sAddr)
+				_, err := conn.WriteTo(dg.bytes(), sAddr)
 				return err
 			},
 
 			expectedCount: 1024,
 			expectedError: "^$",
 		},
-		"success, buf > blksize, window 2": {
+		{
+			name:          "success, buf > blksize, window 2",
 			timeout:       time.Millisecond * 100,
 			bytes:         data[:1024],
 			blksize:       512,
 			windowsize:    2,
 			optionsParsed: true,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				dg.writeAck(1)
 				conn.SetWriteDeadline(time.Now().Add(testConnTimeout))
-				_, err := conn.WriteTo(dg.buf, sAddr)
+				_, err := conn.WriteTo(dg.bytes(), sAddr)
 				return err
 			},
 
 			expectedCount: 1024,
 			expectedError: "^$",
 		},
-		"fail to ack": {
+		{
+			name:          "fail to ack",
 			timeout:       time.Millisecond * 100,
 			bytes:         data[:1024],
 			blksize:       512,
@@ -1287,16 +1352,22 @@ func TestConn_write(t *testing.T) {
 			expectedCount: 1024,
 			expectedError: "^receiving ACK after writing data: network read failed",
 		},
-		"conn err": {
+		{
+			name:          "conn err",
 			timeout:       time.Millisecond * 100,
 			bytes:         data[:1024],
 			blksize:       512,
 			windowsize:    1,
 			optionsParsed: true,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				dg.writeAck(1)
 				conn.SetWriteDeadline(time.Now().Add(testConnTimeout))
-				_, err := conn.WriteTo(dg.buf, sAddr)
+				_, err := conn.WriteTo(dg.bytes(), sAddr)
+				if err != nil {
+					fmt.Printf("Buf: %v\n", dg.buf)
+					fmt.Printf("Addr: %v\n", sAddr)
+					fmt.Printf("Conn: %#v\n", conn)
+				}
 				return err
 			},
 			connErr: errors.New("conn error"),
@@ -1304,10 +1375,21 @@ func TestConn_write(t *testing.T) {
 			expectedCount: 1024,
 			expectedError: "writing data: conn error",
 		},
+		{
+			name:          "writeSetup fails",
+			timeout:       time.Millisecond,
+			optionsParsed: false,
+			rx: func() datagram {
+				dg.writeOptionAck(options{optBlocksize: "234"})
+				return dg
+			},
+
+			expectedError: "parsing options before write: write setup: network read failed:",
+		},
 	}
 
-	for label, c := range cases {
-		t.Run(label, func(t *testing.T) {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, sAddr, cNetConn, closer := testConns(t)
 			defer closer()
 			if c.rx != nil {
@@ -1322,15 +1404,7 @@ func TestConn_write(t *testing.T) {
 			tConn.txBuf = newRingBuffer(int(c.windowsize), int(c.blksize))
 			tConn.err = c.connErr
 
-			errChan := make(chan error)
-			if c.connFunc != nil {
-				go func() {
-					errChan <- c.connFunc(label, cNetConn, sAddr)
-				}()
-			} else {
-				close(errChan)
-			}
-
+			errChan := testConnFunc(cNetConn, sAddr, c.connFunc)
 			count, err := tConn.write(c.bytes)
 			if err := <-errChan; err != nil {
 				t.Fatal(err)
@@ -1339,13 +1413,13 @@ func TestConn_write(t *testing.T) {
 			// Error
 			if err != nil {
 				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
 				}
 			}
 
 			// Count
 			if c.expectedCount != count {
-				t.Errorf("%s: expected count %d, got %d", label, c.expectedCount, count)
+				t.Errorf("expected count %d, got %d", c.expectedCount, count)
 			}
 		})
 	}
@@ -1356,25 +1430,28 @@ func TestConn_Close(t *testing.T) {
 
 	data := getTestData(t, "1MB-random")
 
-	cases := map[string]struct {
+	cases := []struct {
+		name     string
 		bytes    []byte
 		blksize  uint16
 		timeout  time.Duration
-		connFunc func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error
+		connFunc func(conn *net.UDPConn, sAddr *net.UDPAddr) error
 		connErr  error
 
 		expectedError string
 	}{
-		"conn err": {
+		{
+			name:    "conn err",
 			connErr: errors.New("conn error"),
 
 			expectedError: "checking conn err before Close: conn error",
 		},
-		"success, no data": {
+		{
+			name:    "success, no data",
 			timeout: time.Millisecond * 100,
 			bytes:   []byte{},
 			blksize: 512,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				conn.SetReadDeadline(time.Now().Add(testConnTimeout))
 				n, _, err := conn.ReadFrom(dg.buf)
 				if err != nil {
@@ -1383,11 +1460,11 @@ func TestConn_Close(t *testing.T) {
 				dg.offset = n
 
 				if dg.opcode() != opCodeDATA {
-					t.Errorf("%s: Expected opcode %s, got %s", label, opCodeDATA, dg.opcode())
+					t.Errorf("expected opcode %s, got %s", opCodeDATA, dg.opcode())
 				}
 
 				if l := len(dg.data()); l != 0 {
-					t.Errorf("%s: Expected data len to be 0, but they were %d", label, l)
+					t.Errorf("expected data len to be 0, but they were %d", l)
 				}
 
 				dg.writeAck(1)
@@ -1398,11 +1475,12 @@ func TestConn_Close(t *testing.T) {
 
 			expectedError: "^$",
 		},
-		"success, with data": {
+		{
+			name:    "success, with data",
 			timeout: time.Millisecond * 100,
 			bytes:   data[:384],
 			blksize: 512,
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				conn.SetReadDeadline(time.Now().Add(testConnTimeout))
 				n, _, err := conn.ReadFrom(dg.buf)
 				if err != nil {
@@ -1411,11 +1489,11 @@ func TestConn_Close(t *testing.T) {
 				dg.offset = n
 
 				if dg.opcode() != opCodeDATA {
-					t.Errorf("%s: Expected opcode %s, got %s", label, opCodeDATA, dg.opcode())
+					t.Errorf("expected opcode %s, got %s", opCodeDATA, dg.opcode())
 				}
 
 				if l := len(dg.data()); l != 384 {
-					t.Errorf("%s: Expected data len to be 384, but they were %d", label, l)
+					t.Errorf("expected data len to be 384, but they were %d", l)
 				}
 
 				dg.writeAck(1)
@@ -1426,7 +1504,8 @@ func TestConn_Close(t *testing.T) {
 
 			expectedError: "^$",
 		},
-		"timeout": {
+		{
+			name:    "timeout",
 			timeout: time.Millisecond * 100,
 			blksize: 512,
 
@@ -1434,8 +1513,8 @@ func TestConn_Close(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		func() {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, sAddr, cNetConn, closer := testConns(t)
 			defer closer()
 			tConn.blksize = c.blksize
@@ -1445,7 +1524,7 @@ func TestConn_Close(t *testing.T) {
 			tConn.txBuf.Write(c.bytes)
 			tConn.err = c.connErr
 
-			errChan := testConnFunc(label, cNetConn, sAddr, c.connFunc)
+			errChan := testConnFunc(cNetConn, sAddr, c.connFunc)
 			err := tConn.Close()
 			if err := <-errChan; err != nil {
 				t.Fatal(err)
@@ -1454,10 +1533,10 @@ func TestConn_Close(t *testing.T) {
 			// Error
 			if err != nil {
 				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
 				}
 			}
-		}()
+		})
 	}
 }
 
@@ -1466,24 +1545,26 @@ func TestConn_read(t *testing.T) {
 
 	data := getTestData(t, "1MB-random")
 
-	cases := map[string]struct {
+	cases := []struct {
+		name          string
 		bytes         []byte
 		blksize       uint16
 		windowsize    uint16
 		optionsParsed bool
 		timeout       time.Duration
-		connFunc      func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error
+		connFunc      func(conn *net.UDPConn, sAddr *net.UDPAddr) error
 		connErr       error
 
 		expectedRead  int
 		expectedError string
 	}{
-		"success": {
+		{
+			name:          "success",
 			timeout:       time.Millisecond * 100,
 			optionsParsed: true,
 			blksize:       512,
 			bytes:         make([]byte, 512),
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				dg.writeData(1, data[:512])
 				conn.SetWriteDeadline(time.Now().Add(testConnTimeout))
 				_, err := conn.WriteTo(dg.bytes(), sAddr)
@@ -1493,12 +1574,13 @@ func TestConn_read(t *testing.T) {
 			expectedRead:  512,
 			expectedError: "^$",
 		},
-		"success, EOF": {
+		{
+			name:          "success, EOF",
 			timeout:       time.Millisecond * 100,
 			optionsParsed: true,
 			blksize:       512,
 			bytes:         make([]byte, 512),
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				dg.writeData(1, data[:300])
 				conn.SetWriteDeadline(time.Now().Add(testConnTimeout))
 				_, err := conn.WriteTo(dg.bytes(), sAddr)
@@ -1508,13 +1590,14 @@ func TestConn_read(t *testing.T) {
 			expectedRead:  300,
 			expectedError: "^EOF$",
 		},
-		"block sequence error": {
+		{
+			name:          "block sequence error",
 			timeout:       time.Millisecond * 100,
 			optionsParsed: true,
 			blksize:       512,
 			windowsize:    2,
 			bytes:         make([]byte, 512),
-			connFunc: func(label string, conn *net.UDPConn, sAddr *net.UDPAddr) error {
+			connFunc: func(conn *net.UDPConn, sAddr *net.UDPAddr) error {
 				// Write wrong block
 				dg.writeData(2, data[:512])
 				conn.SetWriteDeadline(time.Now().Add(testConnTimeout))
@@ -1531,7 +1614,7 @@ func TestConn_read(t *testing.T) {
 				}
 				dg.offset = n
 				if dg.block() != 0 {
-					t.Errorf("%s: expected block 0 again, got %d", label, dg.block())
+					t.Errorf("expected block 0 again, got %d", dg.block())
 				}
 
 				// Write correct data
@@ -1546,8 +1629,8 @@ func TestConn_read(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		func() {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, sAddr, cNetConn, closer := testConns(t)
 			defer closer()
 			tConn.optionsParsed = c.optionsParsed
@@ -1557,7 +1640,7 @@ func TestConn_read(t *testing.T) {
 			tConn.buf = make([]byte, c.blksize+4)
 			tConn.err = c.connErr
 
-			errChan := testConnFunc(label, cNetConn, sAddr, c.connFunc)
+			errChan := testConnFunc(cNetConn, sAddr, c.connFunc)
 			read, err := tConn.read(c.bytes)
 			if err := <-errChan; err != nil {
 				t.Fatal(err)
@@ -1566,22 +1649,23 @@ func TestConn_read(t *testing.T) {
 			// Error
 			if err != nil {
 				if ok, _ := regexp.MatchString(c.expectedError, err.Error()); !ok {
-					t.Errorf("%s: expected error %q, got %q", label, c.expectedError, err.Error())
+					t.Errorf("expected error %q, got %q", c.expectedError, err.Error())
 				}
 			}
 
 			// Read Count
 			if c.expectedRead != read {
-				t.Errorf("%s: Expected read bytes to be %d, but it was %d", label, c.expectedRead, read)
+				t.Errorf("expected read bytes to be %d, but it was %d", c.expectedRead, read)
 			}
-		}()
+		})
 	}
 }
 
 func TestConn_sendError(t *testing.T) {
 	dg := datagram{buf: make([]byte, 512)}
 
-	cases := map[string]struct {
+	cases := []struct {
+		name    string
 		code    ErrorCode
 		msg     string
 		blksize uint16
@@ -1590,7 +1674,8 @@ func TestConn_sendError(t *testing.T) {
 		expectedCode  ErrorCode
 		expectedError string
 	}{
-		"message, undersize": {
+		{
+			name:    "message, undersize",
 			timeout: time.Millisecond * 100,
 			blksize: 512,
 			code:    ErrCodeNoSuchUser,
@@ -1599,7 +1684,8 @@ func TestConn_sendError(t *testing.T) {
 			expectedCode:  ErrCodeNoSuchUser,
 			expectedError: "foo",
 		},
-		"message, oversize": {
+		{
+			name:    "message, oversize",
 			timeout: time.Millisecond * 100,
 			blksize: 10,
 			code:    ErrCodeNoSuchUser,
@@ -1610,8 +1696,8 @@ func TestConn_sendError(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		func() {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			tConn, _, cNetConn, closer := testConns(t)
 			defer closer()
 			tConn.blksize = c.blksize
@@ -1630,14 +1716,14 @@ func TestConn_sendError(t *testing.T) {
 
 			// Error Code
 			if c.expectedCode != dg.errorCode() {
-				t.Errorf("%s: expected errorCode %s, got %s", label, c.expectedCode, dg.errorCode())
+				t.Errorf("expected errorCode %s, got %s", c.expectedCode, dg.errorCode())
 			}
 
 			// Error Message
 			if c.expectedError != dg.errMsg() {
-				t.Errorf("%s: expected message %q, got %q", label, c.expectedError, dg.errMsg())
+				t.Errorf("expected message %q, got %q", c.expectedError, dg.errMsg())
 			}
-		}()
+		})
 	}
 }
 
@@ -1645,7 +1731,7 @@ func ptrInt64(i int64) *int64 {
 	return &i
 }
 
-func testConns(t *testing.T) (tConn *conn, sAddr *net.UDPAddr, cNetConn *net.UDPConn, closer func()) {
+func testConns(t *testing.T) (*conn, *net.UDPAddr, *net.UDPConn, func()) {
 	// Statically chose port, letting system assign results in an error on Linux w/ nf_conntrack
 	// related to this bug http://marc.info/?l=linux-netdev&s=Possible+race+condition+in+conntracking
 	cAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 54321}
@@ -1654,25 +1740,24 @@ func testConns(t *testing.T) (tConn *conn, sAddr *net.UDPAddr, cNetConn *net.UDP
 		t.Fatal(err)
 	}
 
-	sAddr = &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 54322}
+	sAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 54322}
 	sNetConn, err := net.ListenUDP("udp4", sAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tConn, err = newConn("udp4", ModeOctet, cAddr)
+	tConn, err := newConn("udp4", ModeOctet, cAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Replace auto assigned
 	tConn.netConn.Close()
 	tConn.netConn = sNetConn
 
-	closer = func() {
+	closer := func() {
 		cNetConn.Close()
 		tConn.netConn.Close()
 	}
 
-	return
+	return tConn, sAddr, cNetConn, closer
 }

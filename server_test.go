@@ -9,7 +9,8 @@ import "testing"
 func TestNewServer(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]struct {
+	cases := []struct {
+		name string
 		addr string
 		opts []ServerOpt
 
@@ -18,13 +19,15 @@ func TestNewServer(t *testing.T) {
 		expectedRetransmit int
 		expectedError      error
 	}{
-		"default": {
+		{
+			name: "default",
 			addr: "",
 
 			expectedNet:        "udp",
 			expectedRetransmit: 10,
 		},
-		"net udp6": {
+		{
+			name: "net udp6",
 			addr: "",
 			opts: []ServerOpt{
 				ServerNet("udp6"),
@@ -33,7 +36,8 @@ func TestNewServer(t *testing.T) {
 			expectedNet:        "udp6",
 			expectedRetransmit: 10,
 		},
-		"net, invalid": {
+		{
+			name: "net, invalid",
 			addr: "",
 			opts: []ServerOpt{
 				ServerNet("tcp"),
@@ -41,7 +45,8 @@ func TestNewServer(t *testing.T) {
 
 			expectedError: ErrInvalidNetwork,
 		},
-		"retransmit, valid": {
+		{
+			name: "retransmit, valid",
 			addr: "",
 			opts: []ServerOpt{
 				ServerRetransmit(2),
@@ -50,7 +55,8 @@ func TestNewServer(t *testing.T) {
 			expectedNet:        "udp",
 			expectedRetransmit: 2,
 		},
-		"retransmit, invalid": {
+		{
+			name: "retransmit, invalid",
 			addr: "",
 			opts: []ServerOpt{
 				ServerRetransmit(-1),
@@ -60,31 +66,33 @@ func TestNewServer(t *testing.T) {
 		},
 	}
 
-	for label, c := range cases {
-		server, err := NewServer(c.addr, c.opts...)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			server, err := NewServer(c.addr, c.opts...)
 
-		// Error
-		if err != c.expectedError {
-			t.Errorf("%s: Expected %#v to be %#v", label, err, c.expectedError)
-		}
+			// Error
+			if err != c.expectedError {
+				t.Errorf("expected %#v to be %#v", err, c.expectedError)
+			}
 
-		if err != nil {
-			continue // Skip remaining test if error, avoid nil dereference
-		}
+			if err != nil {
+				return // Skip remaining test if error, avoid nil dereference
+			}
 
-		// Addr
-		if server.addrStr != c.expectedAddrStr {
-			t.Errorf("%s: Expected addr to be %q, but it was %q", label, c.expectedAddrStr, server.addrStr)
-		}
+			// Addr
+			if server.addrStr != c.expectedAddrStr {
+				t.Errorf("expected addr to be %q, but it was %q", c.expectedAddrStr, server.addrStr)
+			}
 
-		// Net
-		if server.net != c.expectedNet {
-			t.Errorf("%s: Expected net to be %q, but it was %q", label, c.expectedNet, server.net)
-		}
+			// Net
+			if server.net != c.expectedNet {
+				t.Errorf("expected net to be %q, but it was %q", c.expectedNet, server.net)
+			}
 
-		// Retransmit
-		if server.retransmit != c.expectedRetransmit {
-			t.Errorf("%s: Expected retransmit to be %d, but it was %d", label, c.expectedRetransmit, server.retransmit)
-		}
+			// Retransmit
+			if server.retransmit != c.expectedRetransmit {
+				t.Errorf("expected retransmit to be %d, but it was %d", c.expectedRetransmit, server.retransmit)
+			}
+		})
 	}
 }
