@@ -37,6 +37,8 @@ var (
 	ErrInvalidMode = errors.New("invalid transfer mode: must be ModeNetASCII or ModeOctet")
 	// ErrInvalidRetransmit indicates that the retransmit limit was configured with a negative value.
 	ErrInvalidRetransmit = errors.New("invalid retransmit: cannot be negative")
+	// ErrMaxRetries indicates that the maximum number of retries has been reached.
+	ErrMaxRetries = errors.New("max retries reached")
 )
 
 type errUnexpectedDatagram struct {
