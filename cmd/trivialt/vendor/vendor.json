@@ -1,0 +1,19 @@
+{
+	"comment": "",
+	"ignore": "test github.com/vcabbage/trivialt/",
+	"package": [
+		{
+			"checksumSHA1": "ToTZYDqlvtuFsetAq5FeCwUxp0E=",
+			"path": "github.com/urfave/cli",
+			"revision": "d86a009f5e13f83df65d0d6cee9a2e3f1445f0da",
+			"revisionTime": "2016-11-02T13:18:01Z"
+		},
+		{
+			"checksumSHA1": "dSv7yfmuh8D1JZ07khtSmVeKIJo=",
+			"path": "gopkg.in/cheggaaa/pb.v1",
+			"revision": "dd61faab99a777c652bb680e37715fe0cb549856",
+			"revisionTime": "2016-10-26T15:03:33Z"
+		}
+	],
+	"rootPath": "github.com/vcabbage/trivialt/cmd/trivialt"
+}
