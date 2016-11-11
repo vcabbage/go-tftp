@@ -304,53 +304,54 @@ func (d *datagram) writeOption(o string, v string) {
 
 // VALIDATION
 
-func (d *datagram) validate() (err error) {
+func (d *datagram) validate() error {
 	switch {
 	case d.offset < 2:
-		err = errors.New("Datagram has no opcode")
+		return errors.New("Datagram has no opcode")
 	case d.opcode() > 6:
-		err = errors.New("Invalid opcode")
-	default:
-		switch d.opcode() {
-		case opCodeRRQ, opCodeWRQ:
-			switch {
-			case len(d.filename()) < 1:
-				err = errors.New("No filename provided")
-			case d.buf[d.offset-1] != 0x0: // End with NULL
-				err = fmt.Errorf("Corrupt %v datagram", d.opcode())
-			case bytes.Count(d.buf[2:d.offset], []byte{0x0})%2 != 0: // Number of NULL chars is not even
-				err = fmt.Errorf("Corrupt %v datagram", d.opcode())
+		return errors.New("Invalid opcode")
+	}
+
+	switch d.opcode() {
+	case opCodeRRQ, opCodeWRQ:
+		switch {
+		case len(d.filename()) < 1:
+			return errors.New("No filename provided")
+		case d.buf[d.offset-1] != 0x0: // End with NULL
+			return fmt.Errorf("Corrupt %v datagram", d.opcode())
+		case bytes.Count(d.buf[2:d.offset], []byte{0x0})%2 != 0: // Number of NULL chars is not even
+			return fmt.Errorf("Corrupt %v datagram", d.opcode())
+		default:
+			switch d.mode() {
+			case ModeNetASCII, ModeOctet:
+				break
+			case modeMail:
+				return errors.New("MAIL transfer mode is unsupported")
 			default:
-				switch d.mode() {
-				case ModeNetASCII, ModeOctet:
-					break
-				case modeMail:
-					err = errors.New("MAIL transfer mode is unsupported")
-				default:
-					err = errors.New("Invalid transfer mode")
-				}
-			}
-		case opCodeACK, opCodeDATA:
-			if d.offset < 4 {
-				err = errors.New("Corrupt block number")
-			}
-		case opCodeERROR:
-			switch {
-			case d.offset < 5:
-				err = errors.New("Corrupt ERROR datagram")
-			case d.buf[d.offset-1] != 0x0:
-				err = errors.New("Corrupt ERROR datagram")
-			case bytes.Count(d.buf[4:d.offset], []byte{0x0}) > 1:
-				err = errors.New("Corrupt ERROR datagram")
-			}
-		case opCodeOACK:
-			switch {
-			case d.buf[d.offset-1] != 0x0:
-				err = errors.New("Corrupt OACK datagram")
-			case bytes.Count(d.buf[2:d.offset], []byte{0x0})%2 != 0: // Number of NULL chars is not even
-				err = errors.New("Corrupt OACK datagram")
+				return errors.New("Invalid transfer mode")
 			}
 		}
+	case opCodeACK, opCodeDATA:
+		if d.offset < 4 {
+			return errors.New("Corrupt block number")
+		}
+	case opCodeERROR:
+		switch {
+		case d.offset < 5:
+			return errors.New("Corrupt ERROR datagram")
+		case d.buf[d.offset-1] != 0x0:
+			return errors.New("Corrupt ERROR datagram")
+		case bytes.Count(d.buf[4:d.offset], []byte{0x0}) > 1:
+			return errors.New("Corrupt ERROR datagram")
+		}
+	case opCodeOACK:
+		switch {
+		case d.buf[d.offset-1] != 0x0:
+			return errors.New("Corrupt OACK datagram")
+		case bytes.Count(d.buf[2:d.offset], []byte{0x0})%2 != 0: // Number of NULL chars is not even
+			return errors.New("Corrupt OACK datagram")
+		}
 	}
-	return
+
+	return nil
 }
