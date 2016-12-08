@@ -1,10 +1,12 @@
 language: go
 sudo: false
 go:
- - 1.7.3
+ - 1.7.x
+ - 1.8beta1
  - tip
 matrix:
  allow_failures:
+  - go: 1.8beta1
   - go: tip
 before_install:
   - go get github.com/mattn/goveralls
