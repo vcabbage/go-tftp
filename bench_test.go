@@ -1,4 +1,4 @@
-package trivialt
+package tftp // import "pack.ag/tftp"
 
 import (
 	"fmt"
@@ -85,6 +85,7 @@ func BenchmarkGet_random(b *testing.B) {
 					w.Write([]byte(c.response))
 				}, nil)
 				defer close()
+
 				url := strings.Replace(c.url, "#host#", ip, 1)
 				url = strings.Replace(url, "#port#", strconv.Itoa(port), 1)
 
@@ -94,11 +95,11 @@ func BenchmarkGet_random(b *testing.B) {
 						b.Fatal(err)
 					}
 
-					// b.ResetTimer()
 					file, err := client.Get(url)
 					if err != nil {
 						b.Fatal(err)
 					}
+					b.ResetTimer()
 
 					_, err = ioutil.ReadAll(file)
 					if err != nil {

@@ -1,8 +1,6 @@
-// Copyright (C) 2016 Kale Blankenship. All rights reserved.
+// Copyright (C) 2017 Kale Blankenship. All rights reserved.
 // This software may be modified and distributed under the terms
 // of the MIT license.  See the LICENSE file for details
-
-// +build ignore
 
 package main
 
@@ -11,8 +9,9 @@ import (
 	"io/ioutil"
 	"log"
 
+	"pack.ag/tftp"
+
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/vcabbage/trivialt"
 )
 
 func main() {
@@ -34,7 +33,7 @@ func main() {
 	}
 
 	// Create a new server listening on port 6900, all interfaces
-	server, err := trivialt.NewServer(":6900")
+	server, err := tftp.NewServer(":6900")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -46,13 +45,13 @@ func main() {
 	log.Fatal(server.ListenAndServe())
 }
 
-// tftpDB embeds a *sql.DB and implements the trivialt.ReadHandler
+// tftpDB embeds a *sql.DB and implements the tftp.ReadHandler
 // interface.
 type tftpDB struct {
 	*sql.DB
 }
 
-func (db *tftpDB) ReceiveTFTP(w trivialt.WriteRequest) {
+func (db *tftpDB) ReceiveTFTP(w tftp.WriteRequest) {
 	// Get the file size
 	size, err := w.Size()
 
@@ -60,7 +59,7 @@ func (db *tftpDB) ReceiveTFTP(w trivialt.WriteRequest) {
 	// An error indicates no size was received.
 	if err != nil || size > 1024*1024 {
 		// Send a "disk full" error.
-		w.WriteError(trivialt.ErrCodeDiskFull, "File too large or no size sent")
+		w.WriteError(tftp.ErrCodeDiskFull, "File too large or no size sent")
 		return
 	}
 

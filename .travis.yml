@@ -2,18 +2,17 @@ language: go
 sudo: false
 go:
  - 1.7.x
- - 1.8beta1
+ - 1.x
  - tip
 matrix:
  allow_failures:
-  - go: 1.8beta1
   - go: tip
 before_install:
   - go get github.com/mattn/goveralls
   - go get golang.org/x/tools/cmd/cover
   - go get github.com/modocache/gover
 script:
-  - go test -race -v -covermode=atomic -coverprofile=trivialt.coverprofile .
+  - go test -race -v -covermode=atomic -coverprofile=tftp.coverprofile .
   - go test -race -v -covermode=atomic -coverprofile=netascii.coverprofile ./netascii
   - gover
   - goveralls -coverprofile=gover.coverprofile -service=travis-ci
