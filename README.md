@@ -1,5 +1,3 @@
-# REPO MIGRATION IN PROGRESS - PLEASE DO NOT USE UNTIL THIS MESSAGE HAS BEEN REMOVED
-
 # **pack.ag/tftp**
 
 [![Go Report Card](https://goreportcard.com/badge/vcabbage/go-tftp)](https://goreportcard.com/report/vcabbage/go-tftp)
