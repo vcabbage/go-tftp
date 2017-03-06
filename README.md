@@ -3,8 +3,8 @@
 [![Go Report Card](https://goreportcard.com/badge/vcabbage/go-tftp)](https://goreportcard.com/report/vcabbage/go-tftp)
 [![Coverage Status](https://coveralls.io/repos/github/vcabbage/go-tftp/badge.svg?branch=master)](https://coveralls.io/github/vcabbage/go-tftp?branch=master)
 [![Build Status](https://travis-ci.org/vcabbage/go-tftp.svg?branch=master)](https://travis-ci.org/vcabbage/go-tftp)
-[![Build status](https://ci.appveyor.com/api/projects/status/0sxw1t6jjoe4yc9p/branch/master?svg=true)](https://ci.appveyor.com/project/vcabbage/go-tftp/branch/master)
-[![GoDoc](https://godoc.org/github.com/vcabbage/go-tftp?status.svg)](http://godoc.org/github.com/vcabbage/go-tftp)
+[![Build status](https://ci.appveyor.com/api/projects/status/0sxw1t6jjoe4yc9p/branch/master?svg=true)](https://ci.appveyor.com/project/vCabbage/trivialt/branch/master)
+[![GoDoc](https://godoc.org/pack.ag/tftp?status.svg)](http://godoc.org/pack.ag/tftp)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/vcabbage/go-tftp/master/LICENSE)
 
 
