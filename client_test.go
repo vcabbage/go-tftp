@@ -827,6 +827,27 @@ func TestClient_parseURL(t *testing.T) {
 			expectedFile: "myfile",
 		},
 		{
+			name: "host and file IPv6",
+			url:  "[fc00::fe]/myfile",
+
+			expectedHost: "[fc00::fe]:69",
+			expectedFile: "myfile",
+		},
+		{
+			name: "host, port, and file IPv6",
+			url:  "[fc00::fe]:8345/myfile",
+
+			expectedHost: "[fc00::fe]:8345",
+			expectedFile: "myfile",
+		},
+		{
+			name: "scheme, host, port, and file IPv6",
+			url:  "tftp://[fc00::fe]:8345/myfile",
+
+			expectedHost: "[fc00::fe]:8345",
+			expectedFile: "myfile",
+		},
+		{
 			name: "port and file",
 			url:  ":8345/myfile",
 
