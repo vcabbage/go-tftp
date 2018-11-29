@@ -424,7 +424,7 @@ func TestClient_Get(t *testing.T) {
 		},
 		{
 			name: "cannot connect",
-			url:  "thishostdoesnotexist/file",
+			url:  "thishostdoesnotexist.test/file",
 
 			expectedError: "[Nn]o such host",
 		},
@@ -708,7 +708,7 @@ func TestClient_Put(t *testing.T) {
 		},
 		{
 			name: "cannot connect",
-			url:  "thishostdoesnotexist/file",
+			url:  "thishostdoesnotexist.test/file",
 
 			expectedError: "[Nn]o such host",
 		},
